@@ -1,0 +1,6 @@
+server:
+  port: 8080
+
+deepseek:
+  api-key: ""  # 开发环境通过 application-dev.yml 覆盖；生产环境通过 DEEPSEEK_API_KEY 环境变量覆盖
+  base-url: https://api.deepseek.com

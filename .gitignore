@@ -1,0 +1,27 @@
+### 敏感配置 ###
+application-dev.yml
+application-local.yml
+application-*.local.yml
+
+### Java / Maven ###
+target/
+*.class
+*.jar
+*.war
+*.log
+*.tmp
+
+### IDE ###
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+*~
+
+### OS ###
+.DS_Store
+Thumbs.db
+
+### Claude Code ###
+.claude/settings.local.json
