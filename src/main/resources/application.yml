@@ -1,6 +1,39 @@
 server:
   port: 8080
 
+spring:
+  servlet:
+    multipart:
+      max-file-size: 2MB
+      max-request-size: 2MB
+
 deepseek:
-  api-key: ""  # 开发环境通过 application-dev.yml 覆盖；生产环境通过 DEEPSEEK_API_KEY 环境变量覆盖
-  base-url: https://api.deepseek.com
+  client:
+    api-key: ""   # 开发环境通过 application-dev.yml 覆盖；生产环境通过 DEEPSEEK_CLIENT_API_KEY 环境变量覆盖
+    base-url: https://api.deepseek.com
+
+rag:
+  embedding:
+    # hash：本地零依赖演示，无真实语义能力；openai：接 OpenAI 兼容的真实 Embedding API（推荐硅基流动 BGE-M3）
+    provider: hash
+    dimension: 1024   # 与 BGE-M3 对齐，切换 provider=openai 时无需重建向量库
+    model-name: BAAI/bge-m3
+    # 真实 Embedding 走独立 API，不复用 DeepSeek（DeepSeek 暂无 Embedding 接口）
+    base-url: https://api.siliconflow.cn/v1
+    api-key: ""       # 在 application-dev.yml 覆盖；硅基流动注册 https://siliconflow.cn
+  chunking:
+    max-chars: 800
+    overlap-chars: 100
+  retrieval:
+    top-k: 3
+    min-score: 0.20
+  vector-store:
+    type: memory       # memory 开箱即跑；qdrant 需要 docker compose up -d
+    qdrant-url: http://localhost:6333
+    collection-name: knowledge
+  upload:
+    max-file-size-bytes: 2097152
+    allowed-extensions:
+      - txt
+      - md
+      - markdown
