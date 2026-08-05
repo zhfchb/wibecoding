@@ -1,0 +1,116 @@
+# 项目工作约定
+
+本文件用于让后续 Agent 对话在开始工作时自动读取项目约定。
+
+> 本项目文档统一放在 `doc/` 目录下。根目录仅保留 `docker-compose.yml`、`pom.xml` 等工程配置文件。
+
+## 必读文档
+
+- 项目大纲：`doc/ARCHITECTURE.md`，作为功能规划、模块拆分和工程规范的统一入口。
+- 变更日志：`doc/CHANGELOG.md`，所有项目变更必须记录到这里。
+- 环境配置：`doc/ENVIRONMENT.md`，本地与生产环境的服务清单、端口、凭据与启动方式。
+
+## 强制规则
+
+1. 开始处理新任务前，先阅读 `doc/ARCHITECTURE.md`。
+2. 每次修改代码、文档或配置文件后，必须在 `doc/CHANGELOG.md` 增加对应记录。
+3. 变更记录应包含日期、改动范围和主要内容。
+4. 敏感配置不得写入仓库或日志，例如真实 API Key。
+5. 引入新的外部服务时，优先用 docker-compose 统一管理，并在 `doc/ENVIRONMENT.md` 同步登记。
+
+## PowerShell 命令执行约定
+
+本机为 Windows + PowerShell 环境，RunCommand 默认走 PowerShell。PowerShell 与 bash 语法差异大，以下陷阱反复踩过，执行命令前务必检查：
+
+### 1. 调用带空格/特殊字符路径的可执行文件,必须用 `&` 调用操作符
+
+PowerShell 把裸字符串当成字符串而非命令,带空格或以 `.` 开头的路径必须用 `&` 前缀调用。
+
+```powershell
+# ❌ 错误:报错 "Unexpected token '--version' in expression or statement"
+#         "The '--' operator works only on variables or on properties."
+"E:\software\BtSoft\mysql\MySQL8.0\bin\mysql.exe" --version
+
+# ✅ 正确:用 & 调用操作符
+& "E:\software\BtSoft\mysql\MySQL8.0\bin\mysql.exe" --version
+```
+
+**通用规则**:凡是 `mysql.exe` / `mysqldump.exe` / `java.exe` / `mvn.cmd` 这类带完整路径的可执行文件,一律用 `& "路径" 参数` 的形式。
+
+### 2. 语句分隔符是 `;`,不是 `&&` / `||`
+
+PowerShell 5.x(Windows 自带)不支持 `&&` / `||` 作为语句连接符(PowerShell 7+ 才支持)。需要顺序执行用 `;`,需要条件判断用 `if ($LASTEXITCODE -eq 0) { ... }`。
+
+```powershell
+# ❌ 错误:PowerShell 5.x 不识别
+mvn clean ; mvn test && echo OK
+
+# ✅ 正确
+mvn clean ; mvn test ; if ($LASTEXITCODE -eq 0) { Write-Host "OK" }
+```
+
+### 3. `$` 是变量符号,字符串里的 `$` 要注意引号
+
+双引号里 `$var` 会被展开成变量值,单引号里 `$var` 是字面量。需要字面量 `$`(如展示提示信息、写 SQL 脚本字符串)用单引号;需要展开变量用双引号。
+
+```powershell
+# ✅ 需要展开变量(查退出码)
+Write-Host "exit code is $LASTEXITCODE"   # 双引号,$LASTEXITCODE 展开为 0/1
+
+# ✅ 需要字面量 $(写文档/提示)
+Write-Host 'use $LASTEXITCODE to check exit code'   # 单引号,原样输出 $
+
+# ❌ 易错:想展示字面量却用了双引号,$LASTEXITCODE 会被展开
+Write-Host "use $LASTEXITCODE to check"   # 输出 "use 0 to check" 而非 "use $LASTEXITCODE to check"
+```
+
+### 4. 抑制错误流用 `2>$null`,重定向与 bash 类似但语法略不同
+
+```powershell
+# 抑制 stderr(PowerShell 的 2 流)
+& "mysql.exe" -uagent -pagent123 -e "SELECT 1;" 2>$null
+
+# 抑制所有非数据流
+... 2>&1 | Out-Null
+```
+
+### 5. 管道传递文本给原生程序,用 `|` + 原生命令
+
+把 SQL 脚本喂给 mysql,不要用 bash 的 `<` 重定向(PowerShell 的 `<` 已弃用),改用 `Get-Content -Raw | & mysql.exe`。
+
+```powershell
+# ❌ bash 写法,PowerShell 不支持 < 重定向
+mysql -uagent -pagent123 agent < schema.sql
+
+# ✅ PowerShell 写法
+Get-Content "e:\Projects\wibecoding\src\main\resources\schema.sql" -Raw |
+  & "E:\software\BtSoft\mysql\MySQL8.0\bin\mysql.exe" -uagent -pagent123 agent
+```
+
+### 6. 调用链命令时,`;` 顺序执行不等于 `&&` 短路
+
+`mvn clean ; mvn test` 即使 clean 失败也会跑 test。要短路面效果:
+
+```powershell
+mvn clean
+if ($LASTEXITCODE -eq 0) { mvn test }
+```
+
+### 7. 常见符号速查
+
+| 符号 | PowerShell 含义 | 易踩坑点 |
+| --- | --- | --- |
+| `&` | 调用操作符(命令前缀) | 路径带空格/`.` 时必须加 |
+| `;` | 语句分隔符 | 不是 `&&`,不短路 |
+| `|` | 管道 | 与 bash 类似 |
+| `>` / `2>` | 重定向 | `<` 已弃用,用 `Get-Content \|` |
+| `$var` | 变量 | 双引号展开,单引号不展开 |
+| `@()` | 数组字面量 | bash 没有对应 |
+| `{}` | 脚本块 | `if`/`foreach` 体必须用 `{}` |
+
+### 8. 自检清单(执行 RunCommand 前)
+
+- [ ] 命令里有没有带路径的可执行文件?有 → 加 `&` 前缀
+- [ ] 有没有用 `&&` / `||`?有 → 改 `;` + `if ($LASTEXITCODE -eq 0)`
+- [ ] 有没有用 `<` 重定向?有 → 改 `Get-Content -Raw |`
+- [ ] 字符串里有没有 `$`?有 → 确认是否需要展开,不需要则用单引号

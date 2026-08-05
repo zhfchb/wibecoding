@@ -5,6 +5,7 @@ import com.example.agent.tools.CalculatorTools;
 import com.example.agent.tools.TimeTools;
 import dev.langchain4j.model.openai.OpenAiChatModel;
 import dev.langchain4j.service.AiServices;
+import dev.langchain4j.service.SystemMessage;
 import org.springframework.stereotype.Service;
 
 /**
@@ -20,7 +21,6 @@ public class AgentServiceImpl implements AgentService {
         this.assistant = AiServices.builder(Assistant.class)
                 .chatLanguageModel(chatModel)
                 .tools(new TimeTools(), new CalculatorTools())
-                .systemMessage("你是一个智能助手。可以调用工具回答关于时间和计算的问题，其他问题直接回答。")
                 .build();
     }
 
@@ -29,8 +29,9 @@ public class AgentServiceImpl implements AgentService {
         return assistant.chat(message);
     }
 
-    /** LangChain4j 动态代理接口，工具调用由框架自动编排 */
+    /** LangChain4j 动态代理接口，工具调用由框架自动编排；系统提示通过 @SystemMessage 注解注入 */
     interface Assistant {
+        @SystemMessage("你是一个智能助手。可以调用工具回答关于时间和计算的问题，其他问题直接回答。")
         String chat(String message);
     }
 }

@@ -1,5 +1,22 @@
 # 测试专用 profile：仅用于让 @SpringBootTest 在无真实 DeepSeek Key 时也能加载上下文。
 # 这里只放 dummy 值，不调用任何外部服务；embedding/vector-store 都用本地实现。
+# MySQL 用 H2 内存库替代，Redis 用本地实现替代，避免测试依赖外部服务。
+spring:
+  datasource:
+    url: jdbc:h2:mem:agent;MODE=MySQL;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+# 测试环境禁用 Redis 自动连接检查（RedisTemplate 懒连接，不主动 ping）
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+
 deepseek:
   client:
     api-key: test-dummy-key
@@ -11,3 +28,10 @@ rag:
     dimension: 768
   vector-store:
     type: memory
+
+# 多轮会话配置（测试环境关闭 Redis 依赖，用内存 Map 替代）
+chat:
+  session:
+    store-type: memory   # memory（测试）/ redis（生产）
+    ttl-seconds: 3600
+    max-history: 20

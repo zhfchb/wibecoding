@@ -34,20 +34,56 @@
 - `docker-compose.yml` 启动 Qdrant 1.19.x，端口 6333（HTTP）/6334（gRPC），数据挂载到命名卷。
 - 测试覆盖：`DocumentChunkerTest`、`InMemoryVectorStoreTest`、`LexicalHashEmbeddingModelTest`、`KnowledgeServiceTest`、`RagChatServiceTest`、`AgentApplicationTests`，以及 `QdrantVectorStoreTest`（集成测试，通过 `QDRANT_URL` 环境变量启用）。
 
-**M3 简历增强迭代（2026-08-04，进行中）**
+**M3 简历增强迭代（2026-08-04，已完成 ✅）**
 
 目标：从「RAG demo」升级为「RAG 项目」，补齐招聘市场要求的 AI 能力广度与 Java 后端基本功。
 
 - ✅ **真实 Embedding 接入**：`rag.embedding` 切换为 BGE-M3 对齐（dimension=1024），默认 hash 保证开箱即跑，配 key 后 `provider=openai` 启用真实语义检索；走独立 API（硅基流动），不复用 DeepSeek。
 - ✅ **检索质量评估**：新增 `RagEvaluationTest`，5 篇文档 + 5 个查询，计算 Recall@K 与 MRR。hash baseline：**Recall@3 = 80%、MRR = 0.8000**，作为简历效果指标数据来源。
 - ✅ **SSE 流式输出**：`POST /api/v1/chat/stream`，基于 `OpenAiStreamingChatModel` + `SseEmitter` + `StreamingResponseHandler` 实现打字机效果；无命中时直接推送提示结束，不调用 LLM。
-- ⚠️ **Agent / Function Calling**（代码已写，待修复编译错误）：新增 `tools/TimeTools`、`tools/CalculatorTools`，基于 `AiServices` 动态代理注册工具；新增 `POST /api/v1/agent/chat`。当前卡在 `AiServices.systemMessage(String)` 在 0.35.0 不存在，待确认正确 API。
+- ✅ **Agent / Function Calling**：新增 `tools/TimeTools`、`tools/CalculatorTools`，基于 `AiServices` 动态代理注册工具；新增 `POST /api/v1/agent/chat`。系统提示通过 `@SystemMessage` 注解注入（0.35.0 的 `AiServices.builder()` 无 `systemMessage(String)` 方法）。
+
+**M4 Java 后端基本功（2026-08-04，已完成 ✅）**
+
+- ✅ **MySQL + MyBatis-Plus**：`DocumentEntity`（文档元数据）+ `ChatHistoryEntity`（对话历史）+ 分页插件 + 逻辑删除；`schema.sql` 建表脚本。
+- ✅ **Redis 多轮会话**：`SessionStore` 抽象 + `MemorySessionStore`（测试）+ `RedisSessionStore`（生产，JSON + TTL）；`ChatSessionProperties` 配置 `store-type` 切换。
+- ✅ **多轮会话改造**：`RagChatServiceImpl` 支持 `sessionId`，加载历史 → 拼 messages → 调 LLM → 保存 user+assistant 到 Redis + MySQL；流式在 `onComplete` 累积完整回答后保存。
+- ✅ **文档元数据持久化**：上传文档后写 `document` 表。
+- ✅ **对话历史持久化**：每轮对话写 `chat_history` 表。
+- ✅ **新增接口**：`GET /api/v1/knowledge/documents`（分页查询文档）、`GET /api/v1/chat/history/{sessionId}`（查询对话历史）。
+- ✅ **docker-compose 全栈**：Qdrant + MySQL 8.0 + Redis 7 一键起。
+- ✅ **测试**：H2 替代 MySQL、memory session store 替代 Redis，13 测试全过。
+
+**M5 认证授权：Spring Security + JWT（2026-08-05，已完成 ✅）**
+
+- ✅ **RBAC 两角色**：`sys_user` 表（username/password/role/deleted），单字段 role 存 ADMIN/USER，@TableLogic 逻辑删除。
+- ✅ **JWT 认证**：`JwtTokenProvider`（jjwt 0.12.6，HS256 签名，claim 含 userId/username/role）+ `JwtAuthenticationFilter`（解析 Authorization Bearer 头，写入 SecurityContext）。
+- ✅ **Spring Security 配置**：无状态 JWT（禁用 session/csrf），`/api/v1/auth/register`+`/api/v1/auth/login` 公开，`/api/v1/admin/**` 需 ADMIN 角色，其他 `/api/v1/**` 需登录。
+- ✅ **密码加密**：BCryptPasswordEncoder（强度 10）。
+- ✅ **认证接口**：`POST /api/v1/auth/register`（注册，默认 USER 角色，@Valid 校验）+ `POST /api/v1/auth/login`（登录，AuthenticationManager 校验密码）+ `GET /api/v1/auth/me`（查当前用户）。
+- ✅ **管理接口**：`GET /api/v1/admin/users`（查所有用户，仅 ADMIN）。
+- ✅ **异常处理增强**：`BusinessException`（业务异常 400）+ `BadCredentialsException`（密码错误 401）+ `MethodArgumentNotValidException`（@Valid 校验失败 400）+ `JwtAuthenticationEntryPoint`（未认证 401 JSON）+ `JwtAccessDeniedHandler`（权限不足 403 JSON）。
+- ✅ **测试**：`AuthControllerTest` 10 个用例覆盖注册成功/用户名重复/参数校验/登录成功/密码错误/JWT 鉴权/RBAC 角色控制，全量 23 测试通过。
+- ✅ **本地初始化**：`scripts/init-users.sql` 插入默认 admin/admin123（ADMIN）+ user/user123（USER）。
+
+**M6 工程化：Swagger + Dockerfile + 全栈 docker-compose + CI（2026-08-05，已完成 ✅）**
+
+- ✅ **Swagger / OpenAPI 3**：springdoc-openapi v2.6.0,`OpenApiConfig` 配置 JWT Bearer 认证 scheme,5 个 Controller 全部加 `@Tag`/`@Operation`/`@SecurityRequirement` 注解。访问 `/swagger-ui.html` 即可在线调试接口,右上角 Authorize 填 JWT 后可测需登录接口。
+- ✅ **Security 放行**:`/v3/api-docs/**`、`/swagger-ui/**`、`/swagger-ui.html` 公开访问。
+- ✅ **Dockerfile**:多阶段构建(Stage 1 Maven 构建 + Stage 2 JRE alpine 运行),非 root 用户,时区 Asia/Shanghai,健康检查,prod profile。
+- ✅ **全栈 docker-compose.prod.yml**:app + qdrant + redis + mysql 一键部署,MySQL 带 healthcheck + 自动建表(schema.sql + init-users.sql 挂载到 `/docker-entrypoint-initdb.d/`)。
+- ✅ **application-prod.yml**:所有敏感配置走环境变量(`${MYSQL_PASSWORD}` / `${JWT_SECRET}` / `${DEEPSEEK_CLIENT_API_KEY}` 等),不入仓库。
+- ✅ **.env.prod.example**:生产环境配置模板,`.env.prod` 在 .gitignore 中。
+- ✅ **.dockerignore**:排除 target/.idea/.git/敏感配置/文档,加速构建 + 防泄露。
+- ✅ **GitHub Actions CI**:`.github/workflows/ci.yml`,push/PR 触发编译+测试+打包+上传 jar artifact。
+- ✅ **测试**:`mvn test` 23 测试全过,Swagger 集成不破坏现有功能。
 
 ### 2.2 规划中
 
 **AI 能力深化**：
 - RAG 优化：BM25 + 向量混合检索、rerank（BGE-Reranker）。
 - Agent 增强：更多工具（数据库查询、天气、知识库检索）、多轮工具编排。
+- LangGraph4j 复杂工作流：自适应 RAG（查询重写循环）、多 Agent 协作、状态持久化、Human-in-the-loop。
 
 **Java 后端基本功补齐**：
 - MySQL 8.0 + MyBatis-Plus：文档元数据、对话历史、用户表。
@@ -68,12 +104,13 @@
 | 框架 | Spring Boot 3.3.5 | 已用 |
 | LLM 对话 | LangChain4j 0.35.0 + DeepSeek（OpenAI 兼容） | 已用 |
 | LLM 流式 | LangChain4j `OpenAiStreamingChatModel` + SSE | 已用 |
-| Agent | LangChain4j `AiServices` + `@Tool` Function Calling | 进行中 |
+| Agent | LangChain4j `AiServices` + `@Tool` Function Calling | 已用 |
+| Agent 编排 | LangGraph4j 1.8.x（有状态图、循环、多 Agent 协作、HITL） | 规划 |
 | Embedding | BGE-M3（硅基流动 OpenAI 兼容）/ hash（本地演示） | 已用 |
 | 向量数据库 | Qdrant 1.19.x（docker compose） | 已用 |
-| 关系型数据库 | MySQL 8.0 + MyBatis-Plus | 规划 |
-| 缓存 | Redis（会话上下文、限流） | 规划 |
-| 认证 | Spring Security + JWT | 规划 |
+| 关系型数据库 | MySQL 8.0 + MyBatis-Plus 3.5.7 | 已用 |
+| 缓存 | Redis 7（会话上下文、TTL 过期） | 已用 |
+| 认证 | Spring Security 6 + JWT（jjwt 0.12.6，HS256）+ BCrypt | 已用 |
 | API 文档 | springdoc-openapi（Swagger） | 规划 |
 | 容器化 | Docker + docker-compose（全栈一键起） | 规划 |
 | 构建 | Maven | 已用 |
@@ -111,6 +148,7 @@ src/main/java/com/example/agent
 ├── dto/          # 接口入参 DTO（带 @Valid 校验）
 ├── vo/           # 视图模型（分页响应、统一封装）
 ├── security/     # Spring Security 配置、JWT 过滤器、UserDetails
+├── workflow/     # LangGraph4j 图编排（自适应 RAG、多 Agent 协作、状态机）
 └── common/       # 通用响应封装、分页、常量、工具类
 ```
 
@@ -197,12 +235,43 @@ AI 返回文本（内部自动调用 TimeTools / CalculatorTools）
 
 LLM 根据用户问题自动决策调用哪个 `@Tool`，拿到工具返回值后继续推理，直到给出最终答案。
 
-### 6.6 规划接口
+### 6.6 认证授权接口
 
-- `GET /api/v1/tools`：查看可用 Agent 工具列表。
-- `POST /api/v1/auth/login`：用户登录，返回 JWT。
-- `GET /api/v1/knowledge/documents`：分页查询已上传文档元数据。
-- `GET /api/v1/chat/history`：分页查询对话历史。
+`POST /api/v1/auth/register`（公开）
+
+请求：
+
+```json
+{"username": "alice", "password": "alice123"}
+```
+
+响应：
+
+```json
+{
+  "token": "eyJhbGciOi...",
+  "tokenType": "Bearer",
+  "userId": 3,
+  "username": "alice",
+  "role": "USER"
+}
+```
+
+`POST /api/v1/auth/login`（公开）
+
+请求：同 register。响应：同 register(返回 JWT)。
+
+`GET /api/v1/auth/me`(需登录)
+
+响应:同 register(token 为 null,返回当前登录用户信息)。
+
+`GET /api/v1/admin/users`(需 ADMIN 角色)
+
+响应:所有用户列表。
+
+### 6.7 规划接口
+
+- `GET /api/v1/tools`:查看可用 Agent 工具列表。
 
 ## 7. 配置规范
 
@@ -226,7 +295,7 @@ LLM 根据用户问题自动决策调用哪个 `@Tool`，拿到工具返回值�
 - 规划配置键：
   - `spring.datasource.*`：MySQL 连接
   - `spring.data.redis.*`：Redis 连接
-  - `jwt.secret` / `jwt.expiration`：JWT 配置
+  - `jwt.secret` / `jwt.expiration-ms`：JWT 配置(已用,HS256 签名 + 24h 过期)
 
 ## 8. 本地开发与验证
 
@@ -261,11 +330,12 @@ mvn test "-Dtest=RagEvaluationTest"
 | --- | --- | --- |
 | M1 | 基础工程 + DeepSeek 单轮对话 | 已完成 |
 | M2 | RAG 知识库：导入、切分、Embedding、Qdrant 检索 | 已完成 |
-| M3 | 简历增强：真实 Embedding + SSE 流式 + Agent Function Calling | 进行中 |
-| M4 | Java 后端基本功：MySQL + MyBatis-Plus + Redis 多轮会话 | 规划 |
-| M5 | 认证授权：Spring Security + JWT | 规划 |
-| M6 | 工程化：Swagger + Dockerfile + 全栈 docker-compose + CI | 规划 |
+| M3 | 简历增强：真实 Embedding + SSE 流式 + Agent Function Calling | 已完成 |
+| M4 | Java 后端基本功：MySQL + MyBatis-Plus + Redis 多轮会话 | 已完成 |
+| M5 | 认证授权：Spring Security + JWT | 已完成 |
+| M6 | 工程化：Swagger + Dockerfile + 全栈 docker-compose + CI | 已完成 |
 | M7 | RAG 优化：混合检索 + rerank + 效果对比 | 规划 |
+| M8 | LangGraph4j 复杂 Agent：自适应 RAG（查询重写循环）+ 多 Agent 协作 + Human-in-the-loop | 规划 |
 
 ## 10. 招聘市场对标
 
@@ -280,9 +350,10 @@ mvn test "-Dtest=RagEvaluationTest"
 | 向量数据库（Qdrant） | ✅ 已完成 | "基于 Qdrant 实现向量存储与检索" |
 | 检索质量评估（Recall@K / MRR） | ✅ 已完成 | "构建评测集，Recall@3 达 80%（hash baseline）" |
 | 流式输出（SSE） | ✅ 已完成 | "基于 SSE 实现流式响应，打字机效果" |
-| Agent / Function Calling | ⚠️ 进行中 | "基于 Function Calling 实现 Agent 工具编排" |
+| Agent / Function Calling | ✅ 已完成 | "基于 Function Calling 实现 Agent 工具编排" |
 | 混合检索 + rerank | 🔲 规划 | 待 M7 |
-| 多轮会话 + 上下文管理 | 🔲 规划 | 待 M4（Redis） |
+| 多轮会话 + 上下文管理 | ✅ 已完成 | "Redis 维护多轮会话上下文，支持历史拼接" |
+| LangGraph4j 有状态图编排（循环/多 Agent/HITL） | 🔲 规划 | 待 M8 |
 
 ### 10.2 Java 后端岗能力对标
 
@@ -290,12 +361,13 @@ mvn test "-Dtest=RagEvaluationTest"
 | --- | --- | --- |
 | Spring Boot 3 + Java 17 | ✅ 已完成 | "基于 Spring Boot 3 + Java 17 构建" |
 | RESTful API 设计 | ✅ 已完成 | "设计并实现 6+ RESTful 接口" |
-| 全局异常处理 + 入参校验 | ⚠️ 部分 | 异常已有，`@Valid` 待补 |
-| MySQL + ORM | 🔲 规划 | 待 M4 |
-| Redis 缓存 | 🔲 规划 | 待 M4 |
-| 认证授权（Spring Security + JWT） | 🔲 规划 | 待 M5 |
-| API 文档（Swagger） | 🔲 规划 | 待 M6 |
-| 容器化部署（Docker） | ⚠️ 部分 | Qdrant 已有，全栈待 M6 |
+| 全局异常处理 + 入参校验 | ✅ 已完成 | "全局异常处理 + @Valid 入参校验 + 401/403 JSON 响应" |
+| MySQL + ORM | ✅ 已完成 | "MyBatis-Plus 持久化文档元数据与对话历史" |
+| Redis 缓存 | ✅ 已完成 | "Redis 维护多轮会话上下文，TTL 自动过期" |
+| 认证授权（Spring Security + JWT） | ✅ 已完成 | "Spring Security + JWT 实现 RBAC 用户认证与接口鉴权" |
+| API 文档（Swagger） | ✅ 已完成 | "springdoc-openapi v2 自动生成 OpenAPI 3 文档 + Swagger UI,支持 JWT Bearer 认证调试" |
+| 容器化部署（Docker） | ✅ 已完成 | "多阶段 Dockerfile(jdk17 + alpine) + 全栈 docker-compose.prod.yml(app+qdrant+redis+mysql) + 健康检查 + 非 root 运行" |
+| CI/CD | ✅ 已完成 | "GitHub Actions:push/PR 触发编译+测试+打包+artifact 上传" |
 | 单元测试 + 集成测试 | ✅ 已完成 | "15+ 测试用例，覆盖单元与集成测试" |
 
 ## 11. 简历素材
@@ -309,7 +381,8 @@ mvn test "-Dtest=RagEvaluationTest"
 > ④ 基于 SSE 实现流式响应，打字机效果降低首字延迟；
 > ⑤ MySQL + MyBatis-Plus 持久化文档元数据与对话历史，Redis 维护多轮会话上下文；
 > ⑥ Spring Security + JWT 实现用户认证与接口鉴权；
-> ⑦ Docker Compose 一键部署全栈（应用 + Qdrant + MySQL + Redis）。
+> ⑦ Docker Compose 一键部署全栈（应用 + Qdrant + MySQL + Redis）；
+> ⑧ 基于 LangGraph4j 实现自适应 RAG，检索质量不达标时自动重写查询重试，支持人工审批高风险问题。
 
 面试可深聊点（每个点都有代码支撑）：
 - RAG 切分策略为什么这样设计？重叠窗口的作用？
@@ -318,15 +391,29 @@ mvn test "-Dtest=RagEvaluationTest"
 - Function Calling 的执行流程？LLM 如何决策调用工具？
 - Qdrant 的 point ID 为什么必须是 UUID？
 - 多轮会话上下文如何在 Redis 中存储与淘汰？
+- JWT 认证流程？为什么用无状态 JWT 不用 session？token 过期怎么处理？
+- BCrypt 密码加密原理？为什么不用 MD5？盐的作用？
+- RBAC 角色权限怎么设计？Spring Security 的 hasRole 和 hasAuthority 区别？
+- Swagger/OpenAPI 3 怎么集成?springdoc v2 和老牌 springfox 区别?生产环境要不要关 Swagger?
+- Dockerfile 多阶段构建的好处?为什么用 alpine + JRE 而不是 JDK?
+- docker-compose 的 healthcheck 和 depends_on condition 区别?为什么 MySQL 要等 healthy 才起 app?
+- GitHub Actions CI 流程?怎么缓存 Maven 依赖加速?
+- 生产环境敏感配置怎么管理?为什么用环境变量不写死在 yml?
+- LangChain4j vs LangGraph4j 的定位差异？什么场景该引入 LangGraph？
+- 自适应 RAG 的查询重写循环如何实现？状态如何在节点间传递？
+- LangGraph4j 的 Checkpoint 机制如何实现断点恢复？
 
 ## 12. 待办与风险
 
-- **M3 Agent 编译错误**：`AiServices.systemMessage(String)` 在 LangChain4j 0.35.0 不存在，待确认正确 API（可能是 `systemMessageProvider` 或通过 `@SystemMessage` 注解）。
+- **M3 Agent 编译错误**：✅ 已修复（2026-08-04）。`AiServices.builder()` 在 0.35.0 无 `systemMessage(String)` 方法，改用 `@SystemMessage` 注解注入系统提示。
 - **真实 Embedding 未联调**：hash baseline 已验证，但未用真实 BGE-M3 key 跑过端到端，需配硅基流动 key 后验证检索效果提升。
-- **MySQL 未接入**：文档元数据、对话历史目前只在内存/向量库，无法持久化与分页查询。
-- **单轮问答**：当前 RAG 无对话历史与会话 ID 维度，需在 M4 配合 Redis 补齐。
+- **MySQL 未接入**：✅ 已完成（2026-08-04）。M4 接入 MySQL 8.0 + MyBatis-Plus，文档元数据与对话历史已持久化。
+- **单轮问答**：✅ 已解决（2026-08-04）。M4 接入 Redis 多轮会话，支持 sessionId + 历史拼接。
 - **`QdrantVectorStore` ID 约束**：要求 chunk ID 为 UUID 或无符号整数，调用方需遵守（`KnowledgeServiceImpl` 已使用 UUID）。
-- **`ARCHITECTURE.md` 规划项与代码实现需要随迭代同步更新**。
+- **`user` 表保留字冲突**：✅ 已解决(2026-08-05)。H2/MySQL 中 `user` 是保留字,表名改用 `sys_user` 避免冲突。
+- **LangGraph4j 学习曲线**：图编排思维（节点+边+共享状态）与线性 Agent 差异大，M8 需预留学习时间；建议先做自适应 RAG 单循环场景验证，再扩展多 Agent。
+- **LangGraph4j 版本兼容**：需确认 1.8.x 与 Spring Boot 3.3.5 + LangChain4j 0.35.0 的版本兼容性，避免依赖冲突。
+- **`doc/ARCHITECTURE.md` 规划项与代码实现需要随迭代同步更新**。
 
 ## 13. AI 编码协作原则
 

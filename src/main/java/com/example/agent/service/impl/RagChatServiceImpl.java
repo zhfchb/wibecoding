@@ -1,11 +1,16 @@
 package com.example.agent.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.example.agent.config.RagProperties;
 import com.example.agent.domain.chat.RagChatResponse;
 import com.example.agent.domain.chat.RagSource;
+import com.example.agent.domain.chat.SessionMessage;
+import com.example.agent.entity.ChatHistoryEntity;
+import com.example.agent.mapper.ChatHistoryMapper;
 import com.example.agent.rag.VectorMatch;
 import com.example.agent.rag.VectorStore;
 import com.example.agent.service.RagChatService;
+import com.example.agent.service.SessionStore;
 import dev.langchain4j.data.embedding.Embedding;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
@@ -24,7 +29,10 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 @Slf4j
 @Service
@@ -41,43 +49,49 @@ public class RagChatServiceImpl implements RagChatService {
     private final EmbeddingModel embeddingModel;
     private final VectorStore vectorStore;
     private final RagProperties ragProperties;
+    private final SessionStore sessionStore;
+    private final ChatHistoryMapper chatHistoryMapper;
 
     @Override
-    public RagChatResponse chat(String message) {
+    public RagChatResponse chat(String message, String sessionId) {
         if (!StringUtils.hasText(message)) {
             throw new IllegalArgumentException("message 不能为空");
         }
 
+        String session = resolveSession(sessionId);
         List<VectorMatch> matches = retrieve(message);
         if (matches.isEmpty()) {
-            return new RagChatResponse("知识库中暂时没有检索到相关内容，请先上传相关文档。", List.of());
+            // 无命中也记录用户消息，便于审计
+            saveHistory(session, SessionMessage.user(message), null);
+            return new RagChatResponse(session,
+                    "知识库中暂时没有检索到相关内容，请先上传相关文档。", List.of());
         }
 
-        String context = buildContext(matches);
-        ChatRequest request = ChatRequest.builder()
-                .messages(
-                        SystemMessage.from(SYSTEM_PROMPT + "\n\n" + context),
-                        UserMessage.from(message))
-                .build();
+        List<ChatMessage> messages = buildMessages(session, message, matches);
+        ChatRequest request = ChatRequest.builder().messages(messages).build();
         String answer = openAiChatModel.chat(request).aiMessage().text();
+
+        // 保存多轮会话上下文 + 持久化对话历史
+        saveHistory(session, SessionMessage.user(message), answer);
 
         List<RagSource> sources = matches.stream()
                 .map(match -> new RagSource(match.text(), match.score()))
                 .toList();
-        return new RagChatResponse(answer, sources);
+        return new RagChatResponse(session, answer, sources);
     }
 
     @Override
-    public SseEmitter streamChat(String message) {
+    public SseEmitter streamChat(String message, String sessionId) {
         if (!StringUtils.hasText(message)) {
             throw new IllegalArgumentException("message 不能为空");
         }
 
+        String session = resolveSession(sessionId);
         SseEmitter emitter = new SseEmitter(120_000L);
         List<VectorMatch> matches = retrieve(message);
 
-        // 无命中时推送提示并结束，不调用 LLM
         if (matches.isEmpty()) {
+            saveHistory(session, SessionMessage.user(message), null);
             try {
                 emitter.send(SseEmitter.event().data("知识库中暂时没有检索到相关内容，请先上传相关文档。"));
                 emitter.complete();
@@ -87,16 +101,15 @@ public class RagChatServiceImpl implements RagChatService {
             return emitter;
         }
 
-        String context = buildContext(matches);
-        List<ChatMessage> messages = List.of(
-                SystemMessage.from(SYSTEM_PROMPT + "\n\n" + context),
-                UserMessage.from(message));
+        List<ChatMessage> messages = buildMessages(session, message, matches);
 
-        // DeepSeek 流式接口：generate 内部异步回调，不阻塞当前线程
+        // 流式输出时累积完整回答，onComplete 时保存历史
+        StringBuilder answerBuilder = new StringBuilder();
         openAiStreamingChatModel.generate(messages, new StreamingResponseHandler<AiMessage>() {
             @Override
             public void onNext(String partialResponse) {
                 try {
+                    answerBuilder.append(partialResponse);
                     emitter.send(SseEmitter.event().data(partialResponse));
                 } catch (IOException e) {
                     emitter.completeWithError(e);
@@ -105,6 +118,7 @@ public class RagChatServiceImpl implements RagChatService {
 
             @Override
             public void onComplete(Response<AiMessage> completeResponse) {
+                saveHistory(session, SessionMessage.user(message), answerBuilder.toString());
                 emitter.complete();
             }
 
@@ -115,6 +129,39 @@ public class RagChatServiceImpl implements RagChatService {
             }
         });
         return emitter;
+    }
+
+    @Override
+    public List<ChatHistoryEntity> getHistory(String sessionId) {
+        if (!StringUtils.hasText(sessionId)) {
+            return List.of();
+        }
+        return chatHistoryMapper.selectList(
+                new LambdaQueryWrapper<ChatHistoryEntity>()
+                        .eq(ChatHistoryEntity::getSessionId, sessionId)
+                        .orderByAsc(ChatHistoryEntity::getId));
+    }
+
+    private String resolveSession(String sessionId) {
+        return StringUtils.hasText(sessionId) ? sessionId : UUID.randomUUID().toString();
+    }
+
+    private List<ChatMessage> buildMessages(String sessionId, String message, List<VectorMatch> matches) {
+        List<ChatMessage> messages = new ArrayList<>();
+        messages.add(SystemMessage.from(SYSTEM_PROMPT + "\n\n" + buildContext(matches)));
+
+        // 加载多轮历史，拼到 system 之后、当前 user 之前
+        List<SessionMessage> history = sessionStore.load(sessionId);
+        for (SessionMessage msg : history) {
+            if (msg.isUser()) {
+                messages.add(UserMessage.from(msg.content()));
+            } else if (msg.isAssistant()) {
+                messages.add(AiMessage.from(msg.content()));
+            }
+        }
+
+        messages.add(UserMessage.from(message));
+        return messages;
     }
 
     private List<VectorMatch> retrieve(String message) {
@@ -131,5 +178,31 @@ public class RagChatServiceImpl implements RagChatService {
             builder.append('[').append(i + 1).append("] ").append(matches.get(i).text()).append('\n');
         }
         return builder.toString();
+    }
+
+    /**
+     * 保存会话上下文（Redis/内存）+ 持久化对话历史（MySQL）。
+     */
+    private void saveHistory(String sessionId, SessionMessage userMessage, String assistantAnswer) {
+        sessionStore.append(sessionId, userMessage);
+        persistHistory(sessionId, "user", userMessage.content());
+        if (StringUtils.hasText(assistantAnswer)) {
+            sessionStore.append(sessionId, SessionMessage.assistant(assistantAnswer));
+            persistHistory(sessionId, "assistant", assistantAnswer);
+        }
+    }
+
+    private void persistHistory(String sessionId, String role, String content) {
+        try {
+            ChatHistoryEntity entity = new ChatHistoryEntity();
+            entity.setSessionId(sessionId);
+            entity.setRole(role);
+            entity.setContent(content);
+            entity.setCreatedAt(LocalDateTime.now());
+            chatHistoryMapper.insert(entity);
+        } catch (Exception e) {
+            // 持久化失败不影响主流程，只记日志
+            log.error("保存对话历史失败 sessionId={} role={}", sessionId, role, e);
+        }
     }
 }

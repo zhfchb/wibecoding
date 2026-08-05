@@ -1,0 +1,407 @@
+# 核心原理笔记
+
+> 本文档用类比和图示讲清项目里每个核心模块的原理,适合面试前快速复习。
+> 每个原理都标注项目里对应的代码位置,方便"对着代码理解原理"。
+
+## 1. RAG(检索增强生成)
+
+### 一句话原理
+让 LLM"翻着你的私有资料回答问题",避免它胡编。
+
+### 类比:开卷考试
+```
+闭卷考试(LLM 直接答)        开卷考试(RAG)
+┌──────────────┐           ┌──────────────┐
+│  问题        │           │  问题        │
+│      ↓       │           │      ↓       │
+│  LLM 靠记忆答 │           │  翻课本(检索)│
+│      ↓       │           │      ↓       │
+│  答案(可能瞎编)│           │  看着资料答题 │
+└──────────────┘           │      ↓       │
+                           │  答案(有依据) │
+                           └──────────────┘
+```
+
+### 完整流程(6 步)
+```
+1. 上传文档    →  "Spring Boot 是 Java 框架..."
+2. 切分        →  ["Spring Boot 是", "Java 框架...", "用于快速开发..."]
+3. Embedding   →  每段文本变成一串数字(向量)
+4. 存向量库    →  Qdrant 里存 (向量, 原文)
+5. 用户提问    →  "Spring Boot 是什么?" → 也做 Embedding
+6. 检索 + 生成  →  找最相近的几段 → 拼进 prompt → LLM 回答
+```
+
+### 代码对应
+- 1-4 步(导入):[KnowledgeServiceImpl.java](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/service/impl/KnowledgeServiceImpl.java) 的 `upload()` 方法
+- 5-6 步(检索+生成):[RagChatServiceImpl.java](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/service/impl/RagChatServiceImpl.java) 的 `chat()` 方法
+
+### 关键问题:为什么要切分?
+LLM 上下文长度有限(几万 token),整篇文档塞不下。切分成小段后:
+- 只把相关段落塞进 prompt(省 token)
+- 检索更精准(整篇文档里可能只有一小段相关)
+
+### 关键问题:重叠窗口有什么用?
+切分时相邻块重叠一部分(如块大小 100,重叠 20),避免把一个完整意思切断。
+```
+块1: [0, 100]
+块2: [80, 180]  ← 和块1重叠 [80,100]
+块3: [160, 260] ← 和块2重叠 [160,180]
+```
+项目配置:[application.yml](file:///e:/Projects/wibecoding/src/main/resources/application.yml) `rag.chunking.chunk-size / overlap`
+
+---
+
+## 2. Embedding(向量化)
+
+### 一句话原理
+把文本变成一串数字(向量),让"语义相近的文本,向量也相近"。
+
+### 类比:语义坐标系
+```
+想象每个词在二维空间有个坐标(实际是 768/1024 维):
+
+  "狗" ────┐
+           ├── 距离近(都是犬科)
+  "犬" ────┘
+
+  "狗" ────────── "汽车"(距离远,语义无关)
+```
+Embedding 模型就是把"文本段"映射到这种高维空间的函数。
+
+### 项目里的两种实现
+1. **hash 演示版**:[LexicalHashEmbeddingModel.java](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/rag/LexicalHashEmbeddingModel.java)
+   - 原理:对词做 hash 映射到向量
+   - 特点:不花钱,但语义能力差(只能匹配字面相同的词)
+   - 用途:本地开发、测试
+
+2. **真实语义版**:BGE-M3(硅基流动 API)
+   - 原理:预训练模型,理解语义
+   - 特点:"狗"和"犬"向量也接近
+   - 用途:生产环境
+
+### 配置切换
+```yaml
+rag:
+  embedding:
+    provider: hash      # 演示用
+    # provider: openai  # 真实语义(需配 API key)
+```
+
+---
+
+## 3. 向量检索(余弦相似度)
+
+### 一句话原理
+找"距离最近"的几条文档,用余弦相似度衡量距离。
+
+### 类比:找最近邻居
+```
+问题向量 ●
+文档向量 ○○○○○○○○○
+
+计算问题和每个文档的夹角:
+夹角越小(余弦值越接近1)→ 越相关
+夹角越大(余弦值越接近0)→ 越无关
+```
+
+### 公式(理解概念即可)
+```
+cos(A, B) = (A·B) / (|A| × |B|)
+          = 向量点积 / (模长乘积)
+```
+- 值域 [-1, 1]
+- 越接近 1 越相似
+- 项目里 `minScore` 过滤掉太不相关的结果
+
+### 代码对应
+- 接口:[VectorStore.java](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/rag/VectorStore.java) 的 `search()`
+- 内存实现:[InMemoryVectorStore.java](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/rag/InMemoryVectorStore.java) — 暴力遍历算余弦
+- Qdrant 实现:[QdrantVectorStore.java](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/rag/QdrantVectorStore.java) — 数据库内部优化
+
+### 评估指标
+[ RagEvaluationTest.java ](file:///e:/Projects/wibecoding/src/test/java/com/example/agent/rag/RagEvaluationTest.java)用两个指标衡量检索质量:
+- **Recall@K**:前 K 条结果里,有没有正确答案(有没有命中)
+- **MRR**:正确答案排在第几位(排得越前分越高)
+
+---
+
+## 4. Agent / Function Calling(工具调用)
+
+### 一句话原理
+LLM 自己不执行代码,只"决定该调哪个工具",由代码执行后把结果返回给它。
+
+### 类比:聪明的经理
+```
+用户:"现在几点?"
+
+LLM(经理)思考:
+  - 这需要查时间
+  - 我有 getCurrentTime 工具
+  - 决定调用它
+
+LLM 输出: 调用 getCurrentTime()
+       ↓
+代码执行: 返回 "14:30"
+       ↓
+LLM 拿到 "14:30",组织成:
+  "现在是下午 2 点 30 分"
+```
+
+### 关键点:LLM 不直接执行!
+LLM 只输出"我要调这个工具",真正的执行靠 Java 代码。这样安全——LLM 不能直接删数据库。
+
+### 代码对应
+- 工具定义:[TimeTools.java](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/tools/TimeTools.java)
+  ```java
+  @Tool("获取当前时间")
+  public String getCurrentTime() { ... }
+  ```
+- Agent 创建:[AgentServiceImpl.java](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/service/impl/AgentServiceImpl.java)
+  ```java
+  AiServices.builder(Assistant.class)
+      .chatLanguageModel(chatModel)
+      .tools(new TimeTools(), new CalculatorTools())  // 注册工具
+      .build();
+  ```
+- 框架自动编排:LangChain4j 收到 LLM 的"调用工具"指令 → 执行 Java 方法 → 把结果塞回 LLM
+
+### 系统提示的作用
+```java
+@SystemMessage("你是一个智能助手。可以调用工具回答关于时间和计算的问题...")
+```
+告诉 LLM 它的身份和能调的工具范围,让它决策更准。
+
+---
+
+## 5. SSE 流式输出(打字机效果)
+
+### 一句话原理
+LLM 生成答案时,不等全部生成完,边生成边往前端推,实现打字机效果。
+
+### 类比:水龙头 vs 桶装
+```
+非流式(桶装):                    流式(水龙头):
+┌──────────────┐                ┌──────────────┐
+│ 等LLM全说完   │                │ LLM说一个字   │
+│      ↓       │                │      ↓       │
+│ 一次性返回    │                │ 立刻推给前端  │
+│      ↓       │                │      ↓       │
+│ 用户等很久    │                │ 重复...       │
+└──────────────┘                │ 用户边看边出  │
+                                └──────────────┘
+```
+
+### 为什么用 SSE 不用 WebSocket?
+| 对比 | SSE | WebSocket |
+| --- | --- | --- |
+| 方向 | 服务器→客户端(单向) | 双向 |
+| 协议 | HTTP | 独立协议 |
+| 复杂度 | 简单(就是 HTTP 长连接) | 复杂 |
+| 适用场景 | LLM 流式输出(只需服务器推) | 聊天室(需要双向) |
+
+LLM 流式输出只需"服务器推给前端",SSE 最合适,简单又够用。
+
+### 代码对应
+- 接口:[ChatController.java](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/controller/ChatController.java) 的 `streamChat()`
+  ```java
+  @PostMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+  public SseEmitter streamChat(@RequestBody ChatRequest request) { ... }
+  ```
+- 实现:[RagChatServiceImpl.java](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/service/impl/RagChatServiceImpl.java) 的 `streamChat()`
+  ```java
+  openAiStreamingChatModel.generate(messages, new StreamingResponseHandler<>() {
+      @Override
+      public void onNext(String partialResponse) {
+          emitter.send(...);  // 每来一段就推
+      }
+      @Override
+      public void onComplete(Response<AiMessage> completeResponse) {
+          saveHistory(...);  // 全部完成后保存历史
+          emitter.complete();
+      }
+  });
+  ```
+
+### 关键细节:onComplete 里保存历史
+流式过程中答案是"碎片"的,要在 `onComplete`(全部生成完)时把完整答案拼起来再保存到会话历史。
+
+---
+
+## 6. 多轮会话上下文
+
+### 一句话原理
+把之前几轮对话塞进 prompt,让 LLM"记得"上文。
+
+### 类比:有记忆的对话
+```
+单轮(没记忆):                     多轮(有记忆):
+用户: Spring Boot 是什么?          用户: Spring Boot 是什么?
+AI:   是一个 Java 框架...           AI:   是一个 Java 框架...
+用户: 它有什么优点?                用户: 它有什么优点?
+AI:   ???(不知道"它"指谁)          AI:   Spring Boot 的优点是...(知道"它"=Spring Boot)
+```
+
+### 实现方式
+1. 每轮对话存到 Redis(key 是 sessionId)
+2. 下次提问时,先从 Redis 加载历史几轮
+3. 拼进 prompt:`[system] [历史几轮] [当前问题]`
+4. LLM 就能"看到"上下文
+
+### 存储设计
+```
+Redis key: chat:session:{sessionId}
+value: [
+  {role: "user", content: "Spring Boot 是什么?"},
+  {role: "assistant", content: "是 Java 框架..."},
+  {role: "user", content: "它有什么优点?"},
+  ...
+]
+TTL: 3600秒(1小时后自动过期)
+```
+
+### 代码对应
+- 存储:[RedisSessionStore.java](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/service/impl/RedisSessionStore.java)
+- 加载历史拼 prompt:[RagChatServiceImpl.java](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/service/impl/RagChatServiceImpl.java) 的 `buildMessages()`
+
+### 为什么用 Redis 不用 MySQL?
+- Redis 快(内存),适合频繁读写会话
+- Redis 有 TTL,自动过期,不用手动清理
+- MySQL 适合"永久保存"的历史记录(本项目也存了一份到 chat_history 表)
+
+---
+
+## 7. LangGraph4j(规划中,概念预习)
+
+### 一句话原理
+用"有向图"编排 Agent 流程,支持循环、分支、暂停,适合复杂场景。
+
+### 类比:流水线 vs 流程图
+```
+LangChain4j(流水线):           LangGraph4j(流程图):
+  开始                           开始
+   ↓                             ↓
+  检索                          检索
+   ↓                             ↓
+  生成                          评估相关性 ──→ 不达标 ──→ 改写查询
+   ↓                             ↓              ↑           ↓
+  结束                          达标            └───────────┘
+                                 ↓
+                                生成
+                                 ↓
+                                结束
+```
+
+### 什么时候该用 LangGraph4j?
+| 场景 | LangChain4j 够吗 | LangGraph4j |
+| --- | --- | --- |
+| 单轮 RAG | ✅ 够 | 过度工程 |
+| 单轮 Agent | ✅ 够 | 过度工程 |
+| 检索不达标要重试 | ❌ 需要循环 | ✅ |
+| 多个 Agent 协作 | ❌ 需要状态传递 | ✅ |
+| 关键步骤要人工审批 | ❌ 需要暂停 | ✅ |
+
+### 核心概念
+- **节点(Node)**:一个处理步骤(如"检索""评估""生成")
+- **边(Edge)**:节点间的流向,可以是条件分支
+- **状态(State)**:在节点间传递的共享数据
+- **Checkpoint**:状态快照,崩溃后能从断点恢复
+
+### 项目规划
+见 [doc/ARCHITECTURE.md](file:///e:/Projects/wibecoding/doc/ARCHITECTURE.md) §9 M8:自适应 RAG(查询重写循环)+ 人工审批。
+
+---
+
+## 8. 配置分层与多环境
+
+### 一句话原理
+不同环境(开发/测试/生产)用不同配置,Spring Boot 用 Profile 机制切换。
+
+### 本项目的分层
+```
+application.yml          ← 默认骨架(提交仓库)
+application-dev.yml      ← 本地开发(含真实key,gitignore)
+application-test.yml     ← 测试(用H2+memory,提交仓库)
+```
+
+### 切换方式
+```bash
+# 本地开发
+mvn spring-boot:run -Dspring-boot.run.profiles=dev
+
+# 测试(自动用 test profile)
+mvn test
+```
+
+### 为什么测试要用 H2 + memory?
+- MySQL/Redis 是外部服务,CI 环境可能没有
+- 测试要快,H2 内存库启动秒级,MySQL 要几秒
+- 测试要独立,memory session store 不依赖 Redis
+
+### 代码对应
+- 测试配置:[application-test.yml](file:///e:/Projects/wibecoding/src/main/resources/application-test.yml)
+- 条件 Bean:[MemorySessionStore.java](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/service/impl/MemorySessionStore.java) 的 `@ConditionalOnProperty`
+
+---
+
+## 9. 统一异常处理
+
+### 一句话原理
+用 `@RestControllerAdvice` 全局兜底异常,前端永远收到统一格式的错误响应。
+
+### 类比:餐厅的服务员
+```
+没有统一处理:                    有统一处理:
+厨师A出错 → 返回"烹饪失败"         厨师A出错 ─┐
+厨师B出错 → 返回"原料问题"         厨师B出错 ─┤→ 服务员统一说"抱歉,出问题了"
+服务员出错 → 返回"服务异常"         服务员出错 ─┘  (格式统一)
+```
+
+### 代码对应
+- 异常处理器:[GlobalExceptionHandler.java](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/exception/GlobalExceptionHandler.java)
+- 统一响应:[ApiErrorResponse.java](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/exception/ApiErrorResponse.java)
+
+前端永远收到:
+```json
+{
+  "timestamp": "2026-08-04T...",
+  "status": 400,
+  "error": "Bad Request",
+  "message": "message 不能为空"
+}
+```
+
+---
+
+## 10. 数据流总览(一图看懂)
+
+```
+用户上传文档:
+  POST /api/v1/knowledge/upload
+       ↓
+  KnowledgeService.upload()
+       ↓
+  ┌─────────────────────────────────┐
+  │ 1. 读取文件内容                  │
+  │ 2. DocumentChunker.chunk() 切分  │
+  │ 3. EmbeddingModel.embedAll() 向量化│
+  │ 4. VectorStore.add() 存向量库     │
+  │ 5. DocumentMapper.insert() 存MySQL│
+  └─────────────────────────────────┘
+
+用户提问:
+  POST /api/v1/chat
+       ↓
+  RagChatService.chat(message, sessionId)
+       ↓
+  ┌─────────────────────────────────┐
+  │ 1. SessionStore.load() 加载历史   │
+  │ 2. EmbeddingModel.embed() 问题向量化│
+  │ 3. VectorStore.search() 检索      │
+  │ 4. 拼 prompt (system+历史+检索+问题)│
+  │ 5. OpenAiChatModel.chat() 调LLM   │
+  │ 6. SessionStore.append() 存历史    │
+  │ 7. ChatHistoryMapper.insert() 存MySQL│
+  │ 8. 返回 (sessionId, answer, sources)│
+  └─────────────────────────────────┘
+```

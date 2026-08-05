@@ -1,0 +1,45 @@
+# GitHub Actions CI:push / PR 触发,自动编译 + 测试 + 打包
+# 状态徽章(README 里用):![CI](https://github.com/<owner>/<repo>/actions/workflows/ci.yml/badge.svg)
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  build:
+    name: Build & Test (JDK 17)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Compile
+        run: mvn clean compile -B -ntp
+
+      - name: Test
+        run: mvn test -B -ntp
+        # 测试用 test profile,H2 内存库 + mock LLM,无需外部服务
+        env:
+          SPRING_PROFILES_ACTIVE: test
+
+      - name: Package (skip tests)
+        run: mvn package -DskipTests -B -ntp
+
+      - name: Upload jar artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wibecoding-app-${{ github.sha }}
+          path: target/*.jar
+          retention-days: 7
+          if-no-files-found: error

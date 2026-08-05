@@ -1,8 +1,10 @@
 package com.example.agent.service;
 
 import com.example.agent.config.RagProperties;
+import com.example.agent.entity.DocumentEntity;
 import com.example.agent.domain.knowledge.KnowledgeUploadResponse;
 import com.example.agent.exception.UnsupportedDocumentTypeException;
+import com.example.agent.mapper.DocumentMapper;
 import com.example.agent.rag.DocumentChunker;
 import com.example.agent.rag.InMemoryVectorStore;
 import com.example.agent.rag.LexicalHashEmbeddingModel;
@@ -15,14 +17,19 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 class KnowledgeServiceTest {
 
+    private final DocumentMapper documentMapper = mock(DocumentMapper.class);
     private final KnowledgeServiceImpl service = new KnowledgeServiceImpl(
             new DocumentChunker(50, 10),
             new LexicalHashEmbeddingModel(768),
             new InMemoryVectorStore(),
-            properties());
+            properties(),
+            documentMapper);
 
     @Test
     void uploadsTextDocumentAndReturnsChunkCount() {
@@ -37,6 +44,7 @@ class KnowledgeServiceTest {
         assertThat(response.documentId()).isNotBlank();
         assertThat(response.fileName()).isEqualTo("spring-boot.md");
         assertThat(response.chunkCount()).isGreaterThan(0);
+        verify(documentMapper).insert(any(DocumentEntity.class));
     }
 
     @Test

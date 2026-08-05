@@ -1,8 +1,12 @@
 package com.example.agent.service.impl;
 
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.example.agent.config.RagProperties;
 import com.example.agent.domain.knowledge.KnowledgeUploadResponse;
+import com.example.agent.entity.DocumentEntity;
 import com.example.agent.exception.UnsupportedDocumentTypeException;
+import com.example.agent.mapper.DocumentMapper;
 import com.example.agent.rag.ChunkRecord;
 import com.example.agent.rag.DocumentChunker;
 import com.example.agent.rag.VectorStore;
@@ -12,18 +16,21 @@ import dev.langchain4j.data.embedding.Embedding;
 import dev.langchain4j.data.segment.TextSegment;
 import dev.langchain4j.model.embedding.EmbeddingModel;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class KnowledgeServiceImpl implements KnowledgeService {
@@ -32,6 +39,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
     private final EmbeddingModel embeddingModel;
     private final VectorStore vectorStore;
     private final RagProperties ragProperties;
+    private final DocumentMapper documentMapper;
 
     @Override
     public KnowledgeUploadResponse upload(MultipartFile file) {
@@ -77,7 +85,32 @@ public class KnowledgeServiceImpl implements KnowledgeService {
                     segments.get(i).text(),
                     embeddings.get(i).vector()));
         }
+
+        // 持久化文档元数据到 MySQL
+        persistDocumentMetadata(documentId, fileName, chunks.size(), file.getSize());
+
         return new KnowledgeUploadResponse(documentId, fileName, chunks.size());
+    }
+
+    @Override
+    public IPage<DocumentEntity> listDocuments(int page, int size) {
+        Page<DocumentEntity> pageObj = new Page<>(page, size);
+        return documentMapper.selectPage(pageObj, null);
+    }
+
+    private void persistDocumentMetadata(String documentId, String fileName, int chunkCount, long fileSize) {
+        try {
+            DocumentEntity entity = new DocumentEntity();
+            entity.setDocumentId(documentId);
+            entity.setFileName(fileName);
+            entity.setChunkCount(chunkCount);
+            entity.setFileSize(fileSize);
+            entity.setCreatedAt(LocalDateTime.now());
+            documentMapper.insert(entity);
+        } catch (Exception e) {
+            // 元数据持久化失败不影响向量库导入结果，只记日志
+            log.error("保存文档元数据失败 documentId={} fileName={}", documentId, fileName, e);
+        }
     }
 
     private String extensionOf(String fileName) {

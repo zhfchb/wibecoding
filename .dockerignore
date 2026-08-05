@@ -1,0 +1,23 @@
+# Docker 构建忽略文件,加速构建 + 避免敏感文件进镜像
+target/
+.idea/
+.vscode/
+*.iml
+.git/
+.gitignore
+
+# 敏感配置(绝不能进镜像)
+application-dev.yml
+application-local.yml
+application-*.local.yml
+.env.prod
+.env.local
+
+# 文档/脚本(镜像里不需要)
+doc/
+*.md
+scripts/
+
+# 系统文件
+.DS_Store
+Thumbs.db
