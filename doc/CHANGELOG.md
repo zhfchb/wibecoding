@@ -1,5 +1,53 @@
 # 变更日志
 
+## 2026-08-06（提交 2）
+
+### 多轮对话修复 + 会话删除 + 知识库删除 + PDF 上传 + Markdown 渲染 + 向量库持久化
+
+**多轮对话修复**
+- 问题：发"你好"只返回"知识库中暂时没有检索到相关内容"，无法闲聊；多轮上下文丢失，无法接着上次对话。
+- 根因：[RagChatServiceImpl](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/service/impl/RagChatServiceImpl.java) `matches.isEmpty()` 时直接返回固定提示不调 LLM；`buildMessages` 从 Redis `sessionStore` 加载历史，dev 环境 Redis 不可用时静默返回空。
+- 修复：空检索时也调 LLM，使用 `SYSTEM_PROMPT_NO_CONTEXT` 让助手介绍自身定位；`buildMessages` 改从 MySQL `chat_history` 表加载历史，进程重启或切换会话都能恢复。
+
+**SSE 流式修复**
+- 问题：流式对话卡在 loading 不结束。
+- 根因：`SseEmitter.complete()` 后 Tomcat 做 async dispatch，经过 Spring Security 时无 SecurityContext 抛 `AccessDeniedException`。
+- 修复：[SecurityConfig](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/security/SecurityConfig.java) 加 `dispatcherTypeMatchers(DispatcherType.ASYNC).permitAll()`。
+
+**会话删除接口**
+- 后端：[ChatHistoryMapper](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/mapper/ChatHistoryMapper.java) `deleteBySessionId` + [RagChatServiceImpl](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/service/impl/RagChatServiceImpl.java) `deleteSession`（删 MySQL 历史 + 清 sessionStore 缓存）+ `DELETE /api/v1/chat/sessions/{sessionId}`。
+- 前端：[ChatPage](file:///e:/Projects/wibecoding/frontend/src/pages/ChatPage.jsx) 会话列表加删除按钮（Popconfirm 二次确认），删当前会话自动切到新会话。
+
+**知识库删除接口**
+- 后端：[KnowledgeService.deleteDocument](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/service/impl/KnowledgeServiceImpl.java) 三步清理——逻辑删除文档元数据 + 物理删除 `document_chunk` + 删除内存向量库向量；含 userId 权限校验。`DELETE /api/v1/knowledge/documents/{documentId}`。
+- 前端：[KnowledgePage](file:///e:/Projects/wibecoding/frontend/src/pages/KnowledgePage.jsx) 操作列加删除按钮 + 完整错误提示。
+- VectorStore 接口新增 `deleteByDocumentId`，InMemoryVectorStore/QdrantVectorStore 均实现。
+
+**PDF 上传 + 大文件支持**
+- [pom.xml](file:///e:/Projects/wibecoding/pom.xml) 引入 Apache PDFBox 3.0.3。
+- 新增 [PdfTextExtractor](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/rag/PdfTextExtractor.java)：按阅读顺序抽取文本，扫描版 PDF 返回友好错误。
+- [KnowledgeServiceImpl](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/service/impl/KnowledgeServiceImpl.java) `readContent` 按扩展名分发（pdf 走 PDFBox，txt/md 走 UTF-8）。
+- 文件大小限制 10MB → 50MB（`application.yml` multipart + `rag.max-file-size-bytes`）。
+
+**向量库持久化**
+- 问题：InMemoryVectorStore 进程重启后向量数据全丢。
+- 新增 [document_chunk 表](file:///e:/Projects/wibecoding/src/main/resources/schema.sql)：存 chunk 文本 + 稠密/稀疏向量（JSON）。
+- 新增 [DocumentChunkEntity](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/entity/DocumentChunkEntity.java) + [DocumentChunkMapper](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/mapper/DocumentChunkMapper.java)。
+- [KnowledgeServiceImpl.upload()](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/service/impl/KnowledgeServiceImpl.java) 上传时同步写 MySQL。
+- 新增 [VectorStoreInitializer](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/rag/VectorStoreInitializer.java)：启动时从 MySQL 加载 chunk 到内存向量库。
+- 历史数据修复：旧文档 `user_id=NULL` 不可见，已 `UPDATE document SET user_id=1`。
+
+**前端 Markdown 渲染**
+- 问题：助手消息显示 Markdown 源代码（`**加粗**`、`` `代码` ``），给用户看不合适。
+- 修复：引入 `react-markdown` + `remark-gfm`，[ChatPage](file:///e:/Projects/wibecoding/frontend/src/pages/ChatPage.jsx) 助手消息用 `<ReactMarkdown>` 渲染为富文本；用户消息保持纯文本。
+- [index.css](file:///e:/Projects/wibecoding/frontend/src/index.css) 新增 `.markdown-body` 样式（标题/列表/代码块/表格/引用/链接）。
+
+**前端图标修复**
+- [index.html](file:///e:/Projects/wibecoding/frontend/index.html) 添加内联 SVG favicon，覆盖浏览器缓存的尚庭公寓图标。
+
+**Git 提交**
+- commit `0c14c55`：43 files changed, 2879 insertions(+), 255 deletions(-)
+
 ## 2026-08-06
 
 ### 知识库用户隔离 + 对话历史 + 多轮对话
