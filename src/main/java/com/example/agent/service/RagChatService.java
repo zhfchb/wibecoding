@@ -24,4 +24,15 @@ public interface RagChatService {
      * 查询某个会话的对话历史。
      */
     List<ChatHistoryEntity> getHistory(String sessionId);
+
+    /**
+     * 列出所有会话（每个会话取最后一条消息），按最后更新时间倒序。
+     */
+    List<ChatHistoryEntity> listSessions();
+
+    /**
+     * 删除指定会话的所有历史消息和上下文。
+     * @param sessionId 会话 ID
+     */
+    void deleteSession(String sessionId);
 }

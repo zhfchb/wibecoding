@@ -9,6 +9,7 @@ import com.example.agent.rag.VectorMatch;
 import com.example.agent.rag.VectorStore;
 import com.example.agent.rag.adaptive.AdaptiveRagGraphFactory;
 import com.example.agent.rag.adaptive.AdaptiveRagState;
+import com.example.agent.security.SecurityUtils;
 import com.example.agent.service.AdaptiveRagService;
 import dev.langchain4j.data.embedding.Embedding;
 import dev.langchain4j.data.message.UserMessage;
@@ -136,7 +137,7 @@ public class AdaptiveRagServiceImpl implements AdaptiveRagService {
      */
     private Map<String, Object> retrieveNode(AdaptiveRagState state) {
         String query = state.rewrittenQuestion();
-        List<VectorMatch> documents = retrieve(query);
+        List<VectorMatch> documents = retrieve(query, SecurityUtils.getCurrentUserId());
         double topScore = documents.isEmpty() ? 0.0 : documents.get(0).score();
         log.debug("检索 query={} hits={} topScore={}", query, documents.size(), topScore);
         return Map.of(DOCUMENTS, documents, RETRIEVAL_SCORE, topScore);
@@ -197,7 +198,7 @@ public class AdaptiveRagServiceImpl implements AdaptiveRagService {
      * 混合检索 + rerank，逻辑与 {@code RagChatServiceImpl.retrieve} 一致，
      * 确保自适应链路继承 M7 的检索能力。
      */
-    private List<VectorMatch> retrieve(String message) {
+    private List<VectorMatch> retrieve(String message, Long userId) {
         Embedding queryEmbedding = embeddingModel.embed(message).content();
         float[] dense = queryEmbedding.vector();
 
@@ -211,8 +212,8 @@ public class AdaptiveRagServiceImpl implements AdaptiveRagService {
         int rrfK = hybrid != null ? hybrid.rrfK() : 60;
 
         List<VectorMatch> candidates = hybridEnabled
-                ? vectorStore.search(dense, sparseEmbeddingModel.embed(message), recallTopK, minScore, rrfK)
-                : vectorStore.search(dense, recallTopK, minScore);
+                ? vectorStore.search(dense, sparseEmbeddingModel.embed(message), recallTopK, minScore, rrfK, userId)
+                : vectorStore.search(dense, recallTopK, minScore, userId);
 
         int finalTopK = (rerank != null && rerank.topK() > 0)
                 ? rerank.topK()

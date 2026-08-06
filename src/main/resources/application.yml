@@ -4,8 +4,8 @@ server:
 spring:
   servlet:
     multipart:
-      max-file-size: 2MB
-      max-request-size: 2MB
+      max-file-size: 50MB
+      max-request-size: 50MB
   datasource:
     url: jdbc:mysql://localhost:3306/agent?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai
     username: agent
@@ -69,11 +69,12 @@ rag:
     model-name: BAAI/bge-reranker-v2-m3
     top-k: 3           # 精排后保留数量；0 表示用 retrieval.top-k
   upload:
-    max-file-size-bytes: 2097152
+    max-file-size-bytes: 52428800
     allowed-extensions:
       - txt
       - md
       - markdown
+      - pdf
   # 自适应 RAG（M8）：LangGraph4j 状态图，查询重写→检索→评分→重试/生成
   adaptive:
     enabled: true       # 开关；关闭时 POST /api/v1/rag/adaptive 返回 501

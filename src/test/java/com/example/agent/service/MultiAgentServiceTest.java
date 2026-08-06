@@ -56,7 +56,7 @@ class MultiAgentServiceTest {
         VectorStore vectorStore = mock(VectorStore.class);
 
         when(embeddingModel.embed(anyString())).thenReturn(Response.from(Embedding.from(new float[768])));
-        when(vectorStore.search(any(), anyInt(), anyDouble())).thenReturn(List.of(HIT));
+        when(vectorStore.search(any(), anyInt(), anyDouble(), any())).thenReturn(List.of(HIT));
         when(chatModel.chat(any(ChatRequest.class)))
                 .thenReturn(ChatResponse.builder().aiMessage(AiMessage.from("草稿答案")).build());
 
@@ -78,7 +78,7 @@ class MultiAgentServiceTest {
         VectorStore vectorStore = mock(VectorStore.class);
 
         when(embeddingModel.embed(anyString())).thenReturn(Response.from(Embedding.from(new float[768])));
-        when(vectorStore.search(any(), anyInt(), anyDouble())).thenReturn(List.of(HIT));
+        when(vectorStore.search(any(), anyInt(), anyDouble(), any())).thenReturn(List.of(HIT));
         when(chatModel.chat(any(ChatRequest.class)))
                 .thenReturn(ChatResponse.builder().aiMessage(AiMessage.from("草稿答案")).build());
 
@@ -99,7 +99,7 @@ class MultiAgentServiceTest {
         VectorStore vectorStore = mock(VectorStore.class);
 
         when(embeddingModel.embed(anyString())).thenReturn(Response.from(Embedding.from(new float[768])));
-        when(vectorStore.search(any(), anyInt(), anyDouble())).thenReturn(List.of(HIT));
+        when(vectorStore.search(any(), anyInt(), anyDouble(), any())).thenReturn(List.of(HIT));
         // 第 1 次：首生；第 2 次：拒绝后重写
         when(chatModel.chat(any(ChatRequest.class)))
                 .thenReturn(ChatResponse.builder().aiMessage(AiMessage.from("草稿 v1")).build())
@@ -128,7 +128,7 @@ class MultiAgentServiceTest {
         VectorStore vectorStore = mock(VectorStore.class);
 
         when(embeddingModel.embed(anyString())).thenReturn(Response.from(Embedding.from(new float[768])));
-        when(vectorStore.search(any(), anyInt(), anyDouble())).thenReturn(List.of(HIT));
+        when(vectorStore.search(any(), anyInt(), anyDouble(), any())).thenReturn(List.of(HIT));
         when(chatModel.chat(any(ChatRequest.class)))
                 .thenReturn(ChatResponse.builder().aiMessage(AiMessage.from("草稿 v1")).build());
 
@@ -159,7 +159,7 @@ class MultiAgentServiceTest {
         VectorStore vectorStore = mock(VectorStore.class);
 
         when(embeddingModel.embed(anyString())).thenReturn(Response.from(Embedding.from(new float[768])));
-        when(vectorStore.search(any(), anyInt(), anyDouble())).thenReturn(List.of(HIT));
+        when(vectorStore.search(any(), anyInt(), anyDouble(), any())).thenReturn(List.of(HIT));
         when(chatModel.chat(any(ChatRequest.class)))
                 .thenReturn(ChatResponse.builder().aiMessage(AiMessage.from("草稿")).build());
 

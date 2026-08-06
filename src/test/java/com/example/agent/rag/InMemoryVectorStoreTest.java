@@ -17,7 +17,7 @@ class InMemoryVectorStoreTest {
         store.add(chunk("第一段", new float[]{1, 0, 0}));
         store.add(chunk("第二段", new float[]{0, 1, 0}));
 
-        List<VectorMatch> matches = store.search(new float[]{1, 0, 0}, 1, 0);
+        List<VectorMatch> matches = store.search(new float[]{1, 0, 0}, 1, 0, null);
 
         assertThat(matches).hasSize(1);
         assertThat(matches.get(0).text()).isEqualTo("第一段");
@@ -27,18 +27,18 @@ class InMemoryVectorStoreTest {
     void filtersByMinimumScore() {
         store.add(chunk("相似", new float[]{1, 0, 0}));
 
-        assertThat(store.search(new float[]{1, 0, 0}, 10, 0.99)).isNotEmpty();
-        assertThat(store.search(new float[]{0, 1, 0}, 10, 0.5)).isEmpty();
+        assertThat(store.search(new float[]{1, 0, 0}, 10, 0.99, null)).isNotEmpty();
+        assertThat(store.search(new float[]{0, 1, 0}, 10, 0.5, null)).isEmpty();
     }
 
     @Test
     void deletesByDocumentId() {
         String documentId = UUID.randomUUID().toString();
-        store.add(new ChunkRecord("chunk-id", documentId, "文本", "f.txt", 0, new float[]{1, 0, 0}, SparseEmbedding.empty()));
+        store.add(new ChunkRecord("chunk-id", documentId, "文本", "f.txt", 0, new float[]{1, 0, 0}, SparseEmbedding.empty(), null));
 
         store.deleteByDocumentId(documentId);
 
-        assertThat(store.search(new float[]{1, 0, 0}, 10, 0)).isEmpty();
+        assertThat(store.search(new float[]{1, 0, 0}, 10, 0, null)).isEmpty();
     }
 
     @Test
@@ -51,7 +51,7 @@ class InMemoryVectorStoreTest {
         float[] queryDense = new float[]{1, 0, 0};
         SparseEmbedding querySparse = sparseModel.embed("Spring Boot 自动配置");
 
-        List<VectorMatch> matches = store.search(queryDense, querySparse, 5, 0.0, 60);
+        List<VectorMatch> matches = store.search(queryDense, querySparse, 5, 0.0, 60, null);
 
         // 两篇都应被召回（各自被一条路召回），RRF 融合后都出现
         assertThat(matches).hasSize(2);
@@ -63,7 +63,7 @@ class InMemoryVectorStoreTest {
     void hybridSearchDegradestoDenseWhenSparseEmpty() {
         store.add(chunk("第一段", new float[]{1, 0, 0}));
 
-        List<VectorMatch> matches = store.search(new float[]{1, 0, 0}, SparseEmbedding.empty(), 5, 0.0, 60);
+        List<VectorMatch> matches = store.search(new float[]{1, 0, 0}, SparseEmbedding.empty(), 5, 0.0, 60, null);
 
         assertThat(matches).hasSize(1);
         assertThat(matches.get(0).text()).isEqualTo("第一段");
@@ -77,6 +77,7 @@ class InMemoryVectorStoreTest {
                 "test.txt",
                 0,
                 vector,
-                sparseModel.embed(text));
+                sparseModel.embed(text),
+                null);
     }
 }

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import { Card, Upload, Table, Button, message, Typography, Space } from 'antd'
-import { InboxOutlined, ReloadOutlined } from '@ant-design/icons'
+import { Card, Upload, Table, Button, message, Typography, Space, Popconfirm } from 'antd'
+import { InboxOutlined, ReloadOutlined, DeleteOutlined } from '@ant-design/icons'
 import { knowledgeApi } from '../api'
 
 const { Dragger } = Upload
@@ -33,6 +33,18 @@ export default function KnowledgePage() {
     loadDocuments()
   }, [])
 
+  const handleDelete = async (documentId) => {
+    try {
+      await knowledgeApi.deleteDocument(documentId)
+      message.success('文档已删除')
+      loadDocuments(pagination.current, pagination.pageSize)
+    } catch (err) {
+      const errData = err.response?.data
+      const errMsg = errData?.message || errData?.error || err.message || '删除失败'
+      message.error(`删除失败：${errMsg}`)
+    }
+  }
+
   // 自定义上传：手动调 API
   const handleUpload = async (options) => {
     const { file, onSuccess, onError } = options
@@ -43,7 +55,11 @@ export default function KnowledgePage() {
       loadDocuments(pagination.current, pagination.pageSize)
     } catch (err) {
       onError(err)
-      message.error(err.response?.data?.message || '上传失败')
+      // 兼容多种错误格式：业务异常 {message} / Spring 异常 {error} / Multipart 异常
+      const errData = err.response?.data
+      const errMsg = errData?.message || errData?.error || errData?.title || err.message || '上传失败'
+      message.error(`上传失败：${errMsg}`)
+      console.error('上传失败详情:', err)
     }
   }
 
@@ -65,6 +81,23 @@ export default function KnowledgePage() {
       width: 180,
       render: (t) => (t ? new Date(t).toLocaleString('zh-CN') : '-'),
     },
+    {
+      title: '操作',
+      key: 'action',
+      width: 80,
+      render: (_, record) => (
+        <Popconfirm
+          title="删除此文档？"
+          description="将删除文档元数据、切片数据和向量库中的向量，不可恢复"
+          onConfirm={() => handleDelete(record.documentId)}
+          okText="删除"
+          cancelText="取消"
+          okButtonProps={{ danger: true }}
+        >
+          <Button type="text" size="small" danger icon={<DeleteOutlined />} />
+        </Popconfirm>
+      ),
+    },
   ]
 
   return (
@@ -72,7 +105,7 @@ export default function KnowledgePage() {
       <Card title="上传文档" style={{ marginBottom: 16 }}>
         <Dragger
           customRequest={handleUpload}
-          accept=".txt,.md,.markdown"
+          accept=".txt,.md,.markdown,.pdf"
           multiple={false}
           maxCount={1}
         >
@@ -81,7 +114,7 @@ export default function KnowledgePage() {
           </p>
           <p className="ant-upload-text">点击或拖拽文件上传</p>
           <p className="ant-upload-hint">
-            支持 txt / md / markdown 格式，单文件最大 2MB。上传后自动切分、Embedding、存入向量库
+            支持 txt / md / markdown / pdf 格式，单文件最大 50MB。上传后自动切分、Embedding、存入向量库
           </p>
         </Dragger>
       </Card>

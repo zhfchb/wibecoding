@@ -5,9 +5,28 @@ CREATE TABLE IF NOT EXISTS document (
     file_name   VARCHAR(255) NOT NULL,
     chunk_count INT          NOT NULL,
     file_size   BIGINT       NOT NULL,
+    user_id     BIGINT,
     created_at  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     deleted     INT          NOT NULL DEFAULT 0
 );
+CREATE INDEX IF NOT EXISTS idx_document_user_id ON document(user_id);
+
+-- 文档切片持久化：存 chunk 文本 + 向量，进程重启后可从 MySQL 恢复内存向量库
+CREATE TABLE IF NOT EXISTS document_chunk (
+    id              BIGINT AUTO_INCREMENT PRIMARY KEY,
+    chunk_id        VARCHAR(64)  NOT NULL,
+    document_id     VARCHAR(64)  NOT NULL,
+    file_name       VARCHAR(255) NOT NULL,
+    chunk_index     INT          NOT NULL,
+    text            TEXT         NOT NULL,
+    dense_vector    TEXT         NOT NULL,
+    sparse_indices  TEXT,
+    sparse_values   TEXT,
+    user_id         BIGINT,
+    created_at      TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_chunk_document_id ON document_chunk(document_id);
+CREATE INDEX IF NOT EXISTS idx_chunk_user_id ON document_chunk(user_id);
 
 -- 对话历史
 CREATE TABLE IF NOT EXISTS chat_history (

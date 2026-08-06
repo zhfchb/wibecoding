@@ -27,6 +27,9 @@ public class DocumentEntity {
 
     private Long fileSize;
 
+    /** 上传者用户 ID，null 表示全局共享（历史数据兼容） */
+    private Long userId;
+
     private LocalDateTime createdAt;
 
     @TableLogic

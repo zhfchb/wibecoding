@@ -50,6 +50,12 @@ export const chatApi = {
   // 对话历史
   history: (sessionId) =>
     api.get(`/chat/history/${sessionId}`),
+  // 会话列表（每个会话最后一条消息）
+  sessions: () =>
+    api.get('/chat/sessions'),
+  // 删除单个会话
+  deleteSession: (sessionId) =>
+    api.delete(`/chat/sessions/${sessionId}`),
 }
 
 // SSE 流式对话：用 fetch + ReadableStream 逐 token 读取
@@ -115,4 +121,7 @@ export const knowledgeApi = {
   },
   listDocuments: (page = 1, size = 10) =>
     api.get('/knowledge/documents', { params: { page, size } }),
+  // 删除单个文档（含向量数据）
+  deleteDocument: (documentId) =>
+    api.delete(`/knowledge/documents/${documentId}`),
 }

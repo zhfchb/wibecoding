@@ -10,6 +10,7 @@ package com.example.agent.rag;
  * @param chunkIndex   切片在文档中的序号（从 0 开始）
  * @param vector       稠密向量（语义检索）
  * @param sparseVector 稀疏向量（关键词检索），为空表示无稀疏表示
+ * @param userId       所属用户 ID，null 表示全局共享
  */
 public record ChunkRecord(
         String id,
@@ -18,5 +19,6 @@ public record ChunkRecord(
         String fileName,
         int chunkIndex,
         float[] vector,
-        SparseEmbedding sparseVector) {
+        SparseEmbedding sparseVector,
+        Long userId) {
 }

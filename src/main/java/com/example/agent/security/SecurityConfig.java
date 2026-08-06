@@ -1,5 +1,6 @@
 package com.example.agent.security;
 
+import jakarta.servlet.DispatcherType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -37,6 +38,8 @@ public class SecurityConfig {
                 .cors(cors -> cors.disable())
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
+                        // SSE 异步 dispatch 放行（emitter.complete 后 Tomcat 做 async dispatch，此时无 SecurityContext）
+                        .dispatcherTypeMatchers(DispatcherType.ASYNC).permitAll()
                         // Swagger / OpenAPI 文档路径公开
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         // 登录/注册公开,/me 走 authenticated

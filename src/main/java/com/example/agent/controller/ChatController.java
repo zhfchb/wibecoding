@@ -11,6 +11,7 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -59,5 +60,23 @@ public class ChatController {
     @GetMapping("/history/{sessionId}")
     public List<ChatHistoryEntity> history(@PathVariable String sessionId) {
         return ragChatService.getHistory(sessionId);
+    }
+
+    /**
+     * 列出所有会话（每个会话最后一条消息），用于前端会话列表展示。
+     */
+    @Operation(summary = "会话列表", description = "返回所有会话的最后一条消息，按最后更新时间倒序")
+    @GetMapping("/sessions")
+    public List<ChatHistoryEntity> sessions() {
+        return ragChatService.listSessions();
+    }
+
+    /**
+     * 删除指定会话的所有历史消息和上下文。
+     */
+    @Operation(summary = "删除会话", description = "删除指定 sessionId 的所有历史消息，不影响其他会话")
+    @DeleteMapping("/sessions/{sessionId}")
+    public void deleteSession(@PathVariable String sessionId) {
+        ragChatService.deleteSession(sessionId);
     }
 }

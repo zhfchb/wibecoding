@@ -12,6 +12,7 @@ import com.example.agent.rag.SparseEmbedding;
 import com.example.agent.rag.SparseEmbeddingModel;
 import com.example.agent.rag.VectorMatch;
 import com.example.agent.rag.VectorStore;
+import com.example.agent.security.SecurityUtils;
 import com.example.agent.service.RagChatService;
 import com.example.agent.service.SessionStore;
 import dev.langchain4j.data.embedding.Embedding;
@@ -47,6 +48,23 @@ public class RagChatServiceImpl implements RagChatService {
             如果知识库内容不足以确认答案，请明确说明无法从现有知识中得到结论，不要编造。
             """;
 
+    /** 无检索结果时的 system prompt：允许 LLM 正常闲聊，介绍自身定位和能力 */
+    private static final String SYSTEM_PROMPT_NO_CONTEXT = """
+            你是「智能知识库助手」，一个基于 RAG（检索增强生成）技术的智能问答系统。
+            当用户问候或闲聊时，请简要介绍自己的定位和能力，例如：
+            - 你可以基于用户上传的知识库文档（txt/md/markdown/pdf）进行检索增强问答
+            - 你支持多轮对话，能记住之前的上下文
+            - 你支持流式输出（打字机效果）
+            - 你提供多 Agent 协作任务（检索 Agent → 生成 Agent → 人工审核）
+            - 你支持自适应 RAG（查询重写 → 检索 → 质量评分 → 重试/生成）
+
+            介绍要简洁自然，不要每次都列举全部功能，根据对话场景灵活回应。
+            如果用户的问题涉及专业知识，建议用户先上传相关文档到知识库。
+            """;
+
+    /** 多轮对话加载的最大历史条数（与 ChatSessionProperties.maxHistory 默认值一致） */
+    private static final int MAX_HISTORY = 20;
+
     private final OpenAiChatModel openAiChatModel;
     private final OpenAiStreamingChatModel openAiStreamingChatModel;
     private final EmbeddingModel embeddingModel;
@@ -64,14 +82,9 @@ public class RagChatServiceImpl implements RagChatService {
         }
 
         String session = resolveSession(sessionId);
-        List<VectorMatch> matches = retrieve(message);
-        if (matches.isEmpty()) {
-            // 无命中也记录用户消息，便于审计
-            saveHistory(session, SessionMessage.user(message), null);
-            return new RagChatResponse(session,
-                    "知识库中暂时没有检索到相关内容，请先上传相关文档。", List.of());
-        }
+        List<VectorMatch> matches = retrieve(message, SecurityUtils.getCurrentUserId());
 
+        // 即使无检索结果也调 LLM，让 LLM 能正常闲聊（不带知识库上下文）
         List<ChatMessage> messages = buildMessages(session, message, matches);
         ChatRequest request = ChatRequest.builder().messages(messages).build();
         String answer = openAiChatModel.chat(request).aiMessage().text();
@@ -93,19 +106,9 @@ public class RagChatServiceImpl implements RagChatService {
 
         String session = resolveSession(sessionId);
         SseEmitter emitter = new SseEmitter(120_000L);
-        List<VectorMatch> matches = retrieve(message);
+        List<VectorMatch> matches = retrieve(message, SecurityUtils.getCurrentUserId());
 
-        if (matches.isEmpty()) {
-            saveHistory(session, SessionMessage.user(message), null);
-            try {
-                emitter.send(SseEmitter.event().data("知识库中暂时没有检索到相关内容，请先上传相关文档。"));
-                emitter.complete();
-            } catch (IOException e) {
-                emitter.completeWithError(e);
-            }
-            return emitter;
-        }
-
+        // 即使无检索结果也调 LLM，让 LLM 能正常闲聊（不带知识库上下文）
         List<ChatMessage> messages = buildMessages(session, message, matches);
 
         // 流式输出时累积完整回答，onCompleteResponse 时保存历史
@@ -147,21 +150,45 @@ public class RagChatServiceImpl implements RagChatService {
                         .orderByAsc(ChatHistoryEntity::getId));
     }
 
+    @Override
+    public List<ChatHistoryEntity> listSessions() {
+        return chatHistoryMapper.selectLatestOfEachSession();
+    }
+
+    @Override
+    public void deleteSession(String sessionId) {
+        if (!StringUtils.hasText(sessionId)) {
+            throw new IllegalArgumentException("sessionId 不能为空");
+        }
+        // 1. 删除 MySQL 持久化历史
+        chatHistoryMapper.deleteBySessionId(sessionId);
+        // 2. 清除会话上下文缓存（Redis/内存）
+        sessionStore.clear(sessionId);
+        log.info("会话已删除: {}", sessionId);
+    }
+
     private String resolveSession(String sessionId) {
         return StringUtils.hasText(sessionId) ? sessionId : UUID.randomUUID().toString();
     }
 
     private List<ChatMessage> buildMessages(String sessionId, String message, List<VectorMatch> matches) {
         List<ChatMessage> messages = new ArrayList<>();
-        messages.add(SystemMessage.from(SYSTEM_PROMPT + "\n\n" + buildContext(matches)));
 
-        // 加载多轮历史，拼到 system 之后、当前 user 之前
-        List<SessionMessage> history = sessionStore.load(sessionId);
-        for (SessionMessage msg : history) {
-            if (msg.isUser()) {
-                messages.add(UserMessage.from(msg.content()));
-            } else if (msg.isAssistant()) {
-                messages.add(AiMessage.from(msg.content()));
+        // 有检索结果时带知识库上下文，无结果时用纯对话 prompt（允许 LLM 正常闲聊）
+        if (matches != null && !matches.isEmpty()) {
+            messages.add(SystemMessage.from(SYSTEM_PROMPT + "\n\n" + buildContext(matches)));
+        } else {
+            messages.add(SystemMessage.from(SYSTEM_PROMPT_NO_CONTEXT));
+        }
+
+        // 从 MySQL 加载多轮历史（不依赖 Redis/sessionStore，进程重启或切换会话都能恢复）
+        List<ChatHistoryEntity> all = getHistory(sessionId);
+        int from = Math.max(0, all.size() - MAX_HISTORY);
+        for (ChatHistoryEntity msg : all.subList(from, all.size())) {
+            if ("user".equals(msg.getRole())) {
+                messages.add(UserMessage.from(msg.getContent()));
+            } else if ("assistant".equals(msg.getRole())) {
+                messages.add(AiMessage.from(msg.getContent()));
             }
         }
 
@@ -169,7 +196,7 @@ public class RagChatServiceImpl implements RagChatService {
         return messages;
     }
 
-    private List<VectorMatch> retrieve(String message) {
+    private List<VectorMatch> retrieve(String message, Long userId) {
         Embedding queryEmbedding = embeddingModel.embed(message).content();
         float[] dense = queryEmbedding.vector();
 
@@ -184,8 +211,8 @@ public class RagChatServiceImpl implements RagChatService {
 
         // 阶段一：召回（混合检索 or 纯稠密）
         List<VectorMatch> candidates = hybridEnabled
-                ? vectorStore.search(dense, sparseEmbeddingModel.embed(message), recallTopK, minScore, rrfK)
-                : vectorStore.search(dense, recallTopK, minScore);
+                ? vectorStore.search(dense, sparseEmbeddingModel.embed(message), recallTopK, minScore, rrfK, userId)
+                : vectorStore.search(dense, recallTopK, minScore, userId);
 
         // 阶段二：精排（rerank or 截断）
         int finalTopK = (rerank != null && rerank.topK() > 0)

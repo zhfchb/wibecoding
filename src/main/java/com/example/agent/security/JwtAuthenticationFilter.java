@@ -10,7 +10,6 @@ import org.springframework.lang.NonNull;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -42,12 +41,19 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         try {
             String username = tokenProvider.getUsername(token);
             String role = tokenProvider.getRole(token);
+            Long userId = tokenProvider.getUserId(token);
             if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
                 // token 合法,构造认证对象写入上下文
                 var authorities = List.of(new SimpleGrantedAuthority("ROLE_" + role));
                 UsernamePasswordAuthenticationToken auth =
                         new UsernamePasswordAuthenticationToken(username, null, authorities);
-                auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                // 把 userId 存到 details，SecurityUtils.getCurrentUserId() 从这里取
+                java.util.Map<String, Object> details = new java.util.HashMap<>();
+                details.put("userId", userId);
+                details.putAll(java.util.Map.of(
+                        "remoteAddress", request.getRemoteAddr(),
+                        "sessionId", request.getSession(false) != null ? request.getSession(false).getId() : ""));
+                auth.setDetails(details);
                 SecurityContextHolder.getContext().setAuthentication(auth);
             }
         } catch (JwtException e) {

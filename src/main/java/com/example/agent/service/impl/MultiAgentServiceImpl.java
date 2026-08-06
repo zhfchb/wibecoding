@@ -10,6 +10,7 @@ import com.example.agent.rag.RerankModel;
 import com.example.agent.rag.SparseEmbeddingModel;
 import com.example.agent.rag.VectorMatch;
 import com.example.agent.rag.VectorStore;
+import com.example.agent.security.SecurityUtils;
 import com.example.agent.service.MultiAgentService;
 import com.example.agent.workflow.multiagent.MultiAgentGraphFactory;
 import com.example.agent.workflow.multiagent.MultiAgentTask;
@@ -273,7 +274,7 @@ public class MultiAgentServiceImpl implements MultiAgentService {
     // ==================== 节点动作 ====================
 
     private Map<String, Object> retrieveAgent(MultiAgentState state) {
-        List<VectorMatch> documents = retrieve(state.question());
+        List<VectorMatch> documents = retrieve(state.question(), SecurityUtils.getCurrentUserId());
         log.debug("检索 Agent: hits={}", documents.size());
         return Map.of(DOCUMENTS, documents);
     }
@@ -297,7 +298,7 @@ public class MultiAgentServiceImpl implements MultiAgentService {
 
     // ==================== 检索与生成辅助 ====================
 
-    private List<VectorMatch> retrieve(String message) {
+    private List<VectorMatch> retrieve(String message, Long userId) {
         Embedding queryEmbedding = embeddingModel.embed(message).content();
         float[] dense = queryEmbedding.vector();
 
@@ -311,8 +312,8 @@ public class MultiAgentServiceImpl implements MultiAgentService {
         int rrfK = hybrid != null ? hybrid.rrfK() : 60;
 
         List<VectorMatch> candidates = hybridEnabled
-                ? vectorStore.search(dense, sparseEmbeddingModel.embed(message), recallTopK, minScore, rrfK)
-                : vectorStore.search(dense, recallTopK, minScore);
+                ? vectorStore.search(dense, sparseEmbeddingModel.embed(message), recallTopK, minScore, rrfK, userId)
+                : vectorStore.search(dense, recallTopK, minScore, userId);
 
         int finalTopK = (rerank != null && rerank.topK() > 0)
                 ? rerank.topK()

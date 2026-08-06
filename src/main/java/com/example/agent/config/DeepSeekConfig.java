@@ -20,7 +20,7 @@ public class DeepSeekConfig {
         return OpenAiChatModel.builder()
                 .apiKey(apiKey)
                 .baseUrl(baseUrl)
-                .modelName("deepseek-v4-flash")
+                .modelName("deepseek-chat")
                 .build();
     }
 
@@ -29,7 +29,7 @@ public class DeepSeekConfig {
         return OpenAiStreamingChatModel.builder()
                 .apiKey(apiKey)
                 .baseUrl(baseUrl)
-                .modelName("deepseek-v4-flash")
+                .modelName("deepseek-chat")
                 .build();
     }
 }

@@ -52,7 +52,7 @@ class AdaptiveRagServiceTest {
         VectorStore vectorStore = mock(VectorStore.class);
 
         when(embeddingModel.embed(anyString())).thenReturn(Response.from(Embedding.from(new float[768])));
-        when(vectorStore.search(any(), anyInt(), anyDouble())).thenReturn(List.of(HIGH_SCORE_HIT));
+        when(vectorStore.search(any(), anyInt(), anyDouble(), any())).thenReturn(List.of(HIGH_SCORE_HIT));
         when(chatModel.chat(any(ChatRequest.class)))
                 .thenReturn(ChatResponse.builder().aiMessage(AiMessage.from("最终答案")).build());
 
@@ -73,7 +73,7 @@ class AdaptiveRagServiceTest {
         VectorStore vectorStore = mock(VectorStore.class);
 
         when(embeddingModel.embed(anyString())).thenReturn(Response.from(Embedding.from(new float[768])));
-        when(vectorStore.search(any(), anyInt(), anyDouble())).thenReturn(List.of(LOW_SCORE_HIT));
+        when(vectorStore.search(any(), anyInt(), anyDouble(), any())).thenReturn(List.of(LOW_SCORE_HIT));
 
         AdaptiveRagServiceImpl service = newService(chatModel, embeddingModel, vectorStore, 0, 0.35);
         RagChatResponse response = service.chat("冷门问题", "session-2");
@@ -92,7 +92,7 @@ class AdaptiveRagServiceTest {
 
         when(embeddingModel.embed(anyString())).thenReturn(Response.from(Embedding.from(new float[768])));
         // 第 1 次检索低分，第 2 次（重写后）高分
-        when(vectorStore.search(any(), anyInt(), anyDouble()))
+        when(vectorStore.search(any(), anyInt(), anyDouble(), any()))
                 .thenReturn(List.of(LOW_SCORE_HIT))
                 .thenReturn(List.of(HIGH_SCORE_HIT));
         // 第 1 次 chat 调用：重写节点返回重写后的问题；第 2 次：生成节点返回答案
@@ -117,7 +117,7 @@ class AdaptiveRagServiceTest {
 
         when(embeddingModel.embed(anyString())).thenReturn(Response.from(Embedding.from(new float[768])));
         // 两次检索都低分
-        when(vectorStore.search(any(), anyInt(), anyDouble())).thenReturn(List.of(LOW_SCORE_HIT));
+        when(vectorStore.search(any(), anyInt(), anyDouble(), any())).thenReturn(List.of(LOW_SCORE_HIT));
         // 仅重写节点会调 1 次 chat
         when(chatModel.chat(any(ChatRequest.class)))
                 .thenReturn(ChatResponse.builder().aiMessage(AiMessage.from("重写后的问题")).build());
@@ -138,7 +138,7 @@ class AdaptiveRagServiceTest {
         VectorStore vectorStore = mock(VectorStore.class);
 
         when(embeddingModel.embed(anyString())).thenReturn(Response.from(Embedding.from(new float[768])));
-        when(vectorStore.search(any(), anyInt(), anyDouble())).thenReturn(List.of());
+        when(vectorStore.search(any(), anyInt(), anyDouble(), any())).thenReturn(List.of());
         // maxRetries=1：空检索→重写→仍空→兜底，重写节点会调 1 次 chat
         when(chatModel.chat(any(ChatRequest.class)))
                 .thenReturn(ChatResponse.builder().aiMessage(AiMessage.from("重写后的问题")).build());

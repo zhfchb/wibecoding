@@ -42,6 +42,7 @@ public class QdrantVectorStore implements VectorStore {
         payload.put("document_id", chunk.documentId());
         payload.put("file_name", chunk.fileName());
         payload.put("chunk_index", chunk.chunkIndex());
+        payload.put("user_id", chunk.userId());
 
         Map<String, Object> point = Map.of(
                 "id", chunk.id(),
@@ -58,8 +59,8 @@ public class QdrantVectorStore implements VectorStore {
     }
 
     @Override
-    public synchronized List<VectorMatch> search(float[] queryVector, int topK, double minScore) {
-        return search(queryVector, null, topK, minScore, 0);
+    public synchronized List<VectorMatch> search(float[] queryVector, int topK, double minScore, Long userId) {
+        return search(queryVector, null, topK, minScore, 0, userId);
     }
 
     @Override
@@ -67,18 +68,19 @@ public class QdrantVectorStore implements VectorStore {
                                                  SparseEmbedding sparseVector,
                                                  int topK,
                                                  double minScore,
-                                                 int rrfK) {
+                                                 int rrfK,
+                                                 Long userId) {
         ensureCollection();
 
-        Map<String, Object> body;
+        // 用 LinkedHashMap 以便条件性添加 filter
+        Map<String, Object> body = new LinkedHashMap<>();
         if (sparseVector == null || sparseVector.isEmpty()) {
             // 纯稠密检索：/points/query 直接 query
-            body = Map.of(
-                    "query", toList(denseVector),
-                    "using", DENSE_NAME,
-                    "limit", topK,
-                    "score_threshold", minScore,
-                    "with_payload", true);
+            body.put("query", toList(denseVector));
+            body.put("using", DENSE_NAME);
+            body.put("limit", topK);
+            body.put("score_threshold", minScore);
+            body.put("with_payload", true);
         } else {
             // 混合检索：dense + sparse 两路 prefetch，RRF 融合
             Map<String, Object> densePrefetch = Map.of(
@@ -92,11 +94,17 @@ public class QdrantVectorStore implements VectorStore {
                             "values", toFloatList(sparseVector.values()))),
                     "using", SPARSE_NAME,
                     "limit", topK);
-            body = Map.of(
-                    "prefetch", List.of(densePrefetch, sparsePrefetch),
-                    "fusion", Map.of("rrf", Map.of("k", rrfK)),
-                    "limit", topK,
-                    "with_payload", true);
+            body.put("prefetch", List.of(densePrefetch, sparsePrefetch));
+            body.put("fusion", Map.of("rrf", Map.of("k", rrfK)));
+            body.put("limit", topK);
+            body.put("with_payload", true);
+        }
+
+        // userId 非空时加过滤条件，实现用户隔离
+        if (userId != null) {
+            Map<String, Object> filter = Map.of("must", List.of(
+                    Map.of("key", "user_id", "match", Map.of("value", userId))));
+            body.put("filter", filter);
         }
 
         JsonNode root = restClient.post()

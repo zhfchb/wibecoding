@@ -2,6 +2,63 @@
 
 ## 2026-08-06
 
+### 知识库用户隔离 + 对话历史 + 多轮对话
+
+**知识库用户隔离**
+- [ChunkRecord](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/rag/ChunkRecord.java) 新增 `userId` 字段，向量库按用户过滤检索。
+- [VectorStore](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/rag/VectorStore.java) 接口 search 方法加 `Long userId` 参数；[InMemoryVectorStore](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/rag/InMemoryVectorStore.java) 和 [QdrantVectorStore](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/rag/QdrantVectorStore.java) 实现按 userId 过滤。
+- [DocumentEntity](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/entity/DocumentEntity.java) + [schema.sql](file:///e:/Projects/wibecoding/src/main/resources/schema.sql) document 表加 `user_id` 列 + 索引。
+- 新增 [SecurityUtils](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/security/SecurityUtils.java) 工具类；[JwtAuthenticationFilter](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/security/JwtAuthenticationFilter.java) 把 userId 存入 SecurityContext details。
+- [KnowledgeServiceImpl](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/service/impl/KnowledgeServiceImpl.java) 上传记录 userId，列表按 userId 过滤。
+- [RagChatServiceImpl](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/service/impl/RagChatServiceImpl.java) / [MultiAgentServiceImpl](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/service/impl/MultiAgentServiceImpl.java) / [AdaptiveRagServiceImpl](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/service/impl/AdaptiveRagServiceImpl.java) 检索时传 userId。
+- 48 tests 0 failures 0 errors。
+
+**对话历史模块**
+- 后端已实现：`chat_history` 表 + `getHistory` 接口 + `persistHistory` 持久化。
+- 新增会话列表接口：[ChatHistoryMapper](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/mapper/ChatHistoryMapper.java) `selectLatestOfEachSession` + `GET /api/v1/chat/sessions`。
+- 前端 [ChatPage](file:///e:/Projects/wibecoding/frontend/src/pages/ChatPage.jsx) 加会话列表侧边栏：新建/切换/高亮当前会话，sessionId 持久化到 localStorage，刷新不丢失。
+
+**多轮对话**
+- 后端已实现：`buildMessages` 加载 sessionStore 历史，拼到 LLM 请求。
+- 前端切换会话自动加载历史消息，支持多轮上下文对话。
+
+**删除单个会话**
+- 后端新增 `DELETE /api/v1/chat/sessions/{sessionId}` 接口：删除指定会话的所有历史消息和上下文缓存，不影响其他会话。
+  - [ChatHistoryMapper](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/mapper/ChatHistoryMapper.java) 加 `deleteBySessionId`。
+  - [RagChatServiceImpl](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/service/impl/RagChatServiceImpl.java) 加 `deleteSession`：删 MySQL 历史 + 清 sessionStore 缓存。
+- 前端 [ChatPage](file:///e:/Projects/wibecoding/frontend/src/pages/ChatPage.jsx) 会话列表加删除按钮（Popconfirm 二次确认），删当前会话自动切到新会话。
+- 验证：删除 test-001 后会话列表从 7 条变 6 条，历史查询返回空数组，其他会话不受影响。
+
+**修复多轮对话 + 闲聊不调 LLM + SSE 卡 loading**
+- 闲聊不调 LLM：[RagChatServiceImpl](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/service/impl/RagChatServiceImpl.java) `chat()`/`streamChat()` 中 `matches.isEmpty()` 时直接返回固定提示语，不调 LLM。改为无检索结果时也调 LLM（用 `SYSTEM_PROMPT_NO_CONTEXT` 允许正常闲聊，并介绍自身定位和能力）。
+- 多轮历史丢失：`buildMessages` 从 `sessionStore`（Redis）加载历史，dev 环境 Redis 不可用时静默返回空列表，多轮上下文完全丢失。改为从 MySQL `chat_history` 表加载（进程重启/切换会话都能恢复），不依赖 Redis。
+- SSE 卡 loading：`SseEmitter.complete()` 后 Tomcat 做 async dispatch，经过 Spring Security filter chain 时无 SecurityContext 抛 `AccessDeniedException`，导致前端 fetch 不结束。[SecurityConfig](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/security/SecurityConfig.java) 加 `dispatcherTypeMatchers(DispatcherType.ASYNC).permitAll()` 放行异步 dispatch。
+- 验证：浏览器流式发"你好"→LLM 正常回答；接着发"我刚才跟你说了什么？"→LLM 回答"你刚才说的是'你好'"，多轮上下文正确。
+
+**修复知识库重启丢失 + 闲聊自身定位 + 文档列表不可见**
+- 闲聊自身定位：[RagChatServiceImpl](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/service/impl/RagChatServiceImpl.java) `SYSTEM_PROMPT_NO_CONTEXT` 改为让 LLM 介绍自身定位（"智能知识库助手，基于 RAG 技术"）和能力（多轮对话/流式输出/多 Agent 协作/自适应 RAG）。发"你好"时 LLM 回答"我是「智能知识库助手」..."。
+- 知识库重启丢失：InMemoryVectorStore 是内存态，进程重启后向量数据全丢，但 chunk 文本和向量没有持久化。
+  - [schema.sql](file:///e:/Projects/wibecoding/src/main/resources/schema.sql) 新增 `document_chunk` 表（chunk_id/document_id/text/dense_vector JSON/sparse_indices JSON/sparse_values JSON/user_id）。
+  - 新增 [DocumentChunkEntity](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/entity/DocumentChunkEntity.java) + [DocumentChunkMapper](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/mapper/DocumentChunkMapper.java)。
+  - [KnowledgeServiceImpl](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/service/impl/KnowledgeServiceImpl.java) `upload()` 存 chunk 时同步写 MySQL（`persistChunk` 方法，用 Jackson 序列化向量）。
+  - 新增 [VectorStoreInitializer](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/rag/VectorStoreInitializer.java)：`ApplicationRunner`，启动时从 `document_chunk` 表加载到 `InMemoryVectorStore`。
+  - [InMemoryVectorStore](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/rag/InMemoryVectorStore.java) 加 `addAll` 批量加载方法。
+- 文档列表不可见：用户隔离功能上线前上传的旧文档 `user_id=NULL`，前端按 `userId=1` 过滤导致列表为空。`UPDATE document SET user_id=1 WHERE user_id IS NULL` 修复 4 条旧数据。
+- 验证：上传 ARCHITECTURE.md（37 chunks）→ document_chunk 表 37 条记录 → 重启后端 → `VectorStoreInitializer` 日志"从 MySQL 加载 37 条 chunk" → 发知识库问题返回带 sources 的回答，检索正常。
+
+### 知识库支持 PDF 上传 + 使用文档
+
+**PDF 解析功能**
+- [pom.xml](file:///e:/Projects/wibecoding/pom.xml) 新增 Apache PDFBox 3.0.3 依赖。
+- 新增 [PdfTextExtractor](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/rag/PdfTextExtractor.java)：基于 PDFBox 3.x 抽取 PDF 文本，按阅读顺序输出（`setSortByPosition(true)`）。
+- [KnowledgeServiceImpl](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/service/impl/KnowledgeServiceImpl.java) 改造：`readContent` 根据扩展名分发，pdf 走 PDFBox，txt/md 走 UTF-8；扫描版 PDF（无文字层）返回友好错误提示。
+- [application.yml](file:///e:/Projects/wibecoding/src/main/resources/application.yml) + [application-prod.yml](file:///e:/Projects/wibecoding/src/main/resources/application-prod.yml)：`allowed-extensions` 加 `pdf`，`max-file-size-bytes` 从 2MB 调到 10MB，`multipart.max-file-size` 从 2MB 调到 10MB。
+- 前端 [KnowledgePage](file:///e:/Projects/wibecoding/frontend/src/pages/KnowledgePage.jsx)：`accept` 加 `.pdf`，提示文案更新为"支持 txt / md / markdown / pdf 格式，单文件最大 10MB"。
+- 验证：curl 上传 test-upload.pdf 成功，返回 documentId + chunkCount=1，PDFBox 解析 + embedding + 入库全流程通过。
+
+**使用文档**
+- 新增 [USER_GUIDE.md](file:///e:/Projects/wibecoding/doc/USER_GUIDE.md)：包含环境要求、依赖服务启动、后端/前端启动步骤、默认账号、功能说明（登录/RAG 对话/多 Agent 任务/知识库管理含 PDF）、配置说明、常见问题、技术栈、项目结构。
+
 ### M9 多 Agent 任务持久化：MySQL Checkpoint Saver + 前端调试界面 完成 ✅
 
 针对用户反馈「进程重启会丢失正在审核中的任务」，将 M9 的内存态 checkpoint（`MemorySaver`）和任务表（`ConcurrentHashMap`）替换为 MySQL 持久化，进程重启后可恢复 AWAITING_REVIEW 状态的任务。同时开发 React 前端界面供直观调试。

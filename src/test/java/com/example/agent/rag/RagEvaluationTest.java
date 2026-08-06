@@ -81,7 +81,7 @@ class RagEvaluationTest {
         for (EvalDoc doc : docs) {
             Embedding emb = model.embed(doc.text()).content();
             store.add(new ChunkRecord(UUID.randomUUID().toString(), doc.id(), doc.text(), doc.title(), 0,
-                    emb.vector(), SparseEmbedding.empty()));
+                    emb.vector(), SparseEmbedding.empty(), null));
         }
 
         List<EvalQuery> queries = buildQueries();
@@ -95,7 +95,7 @@ class RagEvaluationTest {
 
         for (EvalQuery query : queries) {
             Embedding queryEmb = model.embed(query.question()).content();
-            List<VectorMatch> matches = store.search(queryEmb.vector(), TOP_K, 0.0);
+            List<VectorMatch> matches = store.search(queryEmb.vector(), TOP_K, 0.0, null);
 
             int rank = -1;
             for (int i = 0; i < matches.size(); i++) {

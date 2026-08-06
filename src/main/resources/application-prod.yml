@@ -43,11 +43,12 @@ rag:
     model-name: ${RAG_RERANK_MODEL:BAAI/bge-reranker-v2-m3}
     top-k: ${RAG_RERANK_TOP_K:3}
   upload:
-    max-file-size-bytes: ${RAG_UPLOAD_MAX_BYTES:2097152}
+    max-file-size-bytes: ${RAG_UPLOAD_MAX_BYTES:10485760}
     allowed-extensions:
       - txt
       - md
       - markdown
+      - pdf
   adaptive:
     enabled: ${RAG_ADAPTIVE_ENABLED:true}
     max-retries: ${RAG_ADAPTIVE_MAX_RETRIES:1}

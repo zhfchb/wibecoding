@@ -16,9 +16,17 @@ public class InMemoryVectorStore implements VectorStore {
         chunks.add(chunk);
     }
 
+    /**
+     * 批量加载切片（启动时从 MySQL 恢复内存向量库）。
+     */
+    public synchronized void addAll(List<ChunkRecord> records) {
+        chunks.addAll(records);
+    }
+
     @Override
-    public synchronized List<VectorMatch> search(float[] queryVector, int topK, double minScore) {
+    public synchronized List<VectorMatch> search(float[] queryVector, int topK, double minScore, Long userId) {
         return chunks.stream()
+                .filter(chunk -> userId == null || userId.equals(chunk.userId()))
                 .map(chunk -> new VectorMatch(
                         chunk.id(),
                         chunk.documentId(),
@@ -37,14 +45,16 @@ public class InMemoryVectorStore implements VectorStore {
                                                  SparseEmbedding sparseVector,
                                                  int topK,
                                                  double minScore,
-                                                 int rrfK) {
+                                                 int rrfK,
+                                                 Long userId) {
         if (sparseVector == null || sparseVector.isEmpty()) {
-            return search(denseVector, topK, minScore);
+            return search(denseVector, topK, minScore, userId);
         }
 
         // 1. 稠密路：计算 cosine，按分数排名
         List<Ranked> denseRanked = new ArrayList<>();
         for (ChunkRecord chunk : chunks) {
+            if (userId != null && !userId.equals(chunk.userId())) continue;
             double score = cosine(denseVector, chunk.vector());
             if (score >= minScore) {
                 denseRanked.add(new Ranked(chunk, score));
@@ -56,6 +66,7 @@ public class InMemoryVectorStore implements VectorStore {
         Map<Integer, Float> querySparse = toMap(sparseVector);
         List<Ranked> sparseRanked = new ArrayList<>();
         for (ChunkRecord chunk : chunks) {
+            if (userId != null && !userId.equals(chunk.userId())) continue;
             double score = sparseDot(querySparse, chunk.sparseVector());
             if (score > 0) {
                 sparseRanked.add(new Ranked(chunk, score));

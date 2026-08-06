@@ -50,7 +50,7 @@ class RagChatServiceTest {
                 sessionStore, chatHistoryMapper, new HashingSparseModel(), new NoopRerankModel());
 
         when(embeddingModel.embed(anyString())).thenReturn(Response.from(Embedding.from(new float[768])));
-        when(vectorStore.search(any(), anyInt(), anyDouble())).thenReturn(List.of());
+        when(vectorStore.search(any(), anyInt(), anyDouble(), any())).thenReturn(List.of());
         when(sessionStore.load(anyString())).thenReturn(List.of());
 
         RagChatResponse response = service.chat("未收录的问题", null);
@@ -74,7 +74,7 @@ class RagChatServiceTest {
                 sessionStore, chatHistoryMapper, new HashingSparseModel(), new NoopRerankModel());
 
         when(embeddingModel.embed(anyString())).thenReturn(Response.from(Embedding.from(new float[768])));
-        when(vectorStore.search(any(), anyInt(), anyDouble()))
+        when(vectorStore.search(any(), anyInt(), anyDouble(), any()))
                 .thenReturn(List.of(new VectorMatch("id", "doc", "Spring Boot 配置", "spring.md", 0, 0.91)));
         when(chatModel.chat(any(ChatRequest.class)))
                 .thenReturn(ChatResponse.builder().aiMessage(AiMessage.from("答案是 Spring Boot 配置。")).build());
@@ -107,8 +107,8 @@ class RagChatServiceTest {
                 sessionStore, chatHistoryMapper, new HashingSparseModel(), rerankModel);
 
         when(embeddingModel.embed(anyString())).thenReturn(Response.from(Embedding.from(new float[768])));
-        // 召回阶段：5-arg 混合检索返回 2 个候选
-        when(vectorStore.search(any(), any(), anyInt(), anyDouble(), anyInt()))
+        // 召回阶段：6-arg 混合检索返回 2 个候选
+        when(vectorStore.search(any(), any(), anyInt(), anyDouble(), anyInt(), any()))
                 .thenReturn(List.of(
                         new VectorMatch("a", "doc", "候选 A", "a.txt", 0, 0.5),
                         new VectorMatch("b", "doc", "候选 B", "b.txt", 1, 0.4)));
@@ -121,8 +121,8 @@ class RagChatServiceTest {
 
         RagChatResponse response = service.chat("问题", "session-2");
 
-        // 验证走了混合检索 5-arg 路径（而非 3-arg 稠密路径）
-        verify(vectorStore).search(any(), any(), anyInt(), anyDouble(), anyInt());
+        // 验证走了混合检索 6-arg 路径（而非 4-arg 稠密路径）
+        verify(vectorStore).search(any(), any(), anyInt(), anyDouble(), anyInt(), any());
         // 验证 rerank 被调用
         verify(rerankModel).rerank(anyString(), anyList(), anyInt());
         // sources 应为精排后的 1 条，且分数被替换为 rerank 分

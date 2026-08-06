@@ -44,9 +44,9 @@ class QdrantVectorStoreTest {
     @Test
     void addAndSearchFindsInsertedChunk() {
         String documentId = UUID.randomUUID().toString();
-        store.add(new ChunkRecord(UUID.randomUUID().toString(), documentId, "Spring Boot 配置 Qdrant", "spring.md", 0, unitVector(0), SparseEmbedding.empty()));
+        store.add(new ChunkRecord(UUID.randomUUID().toString(), documentId, "Spring Boot 配置 Qdrant", "spring.md", 0, unitVector(0), SparseEmbedding.empty(), null));
 
-        List<VectorMatch> matches = store.search(unitVector(0), 5, 0.0);
+        List<VectorMatch> matches = store.search(unitVector(0), 5, 0.0, null);
 
         assertThat(matches).anySatisfy(match -> {
             assertThat(match.text()).isEqualTo("Spring Boot 配置 Qdrant");
@@ -57,12 +57,12 @@ class QdrantVectorStoreTest {
     @Test
     void deleteByDocumentIdRemovesAllChunks() {
         String documentId = UUID.randomUUID().toString();
-        store.add(new ChunkRecord(UUID.randomUUID().toString(), documentId, "文本 A", "a.txt", 0, unitVector(1), SparseEmbedding.empty()));
-        store.add(new ChunkRecord(UUID.randomUUID().toString(), documentId, "文本 B", "b.txt", 1, unitVector(1), SparseEmbedding.empty()));
+        store.add(new ChunkRecord(UUID.randomUUID().toString(), documentId, "文本 A", "a.txt", 0, unitVector(1), SparseEmbedding.empty(), null));
+        store.add(new ChunkRecord(UUID.randomUUID().toString(), documentId, "文本 B", "b.txt", 1, unitVector(1), SparseEmbedding.empty(), null));
 
         store.deleteByDocumentId(documentId);
 
-        assertThat(store.search(unitVector(1), 10, 0.0))
+        assertThat(store.search(unitVector(1), 10, 0.0, null))
                 .noneSatisfy(match -> assertThat(match.documentId()).isEqualTo(documentId));
     }
 
@@ -70,10 +70,10 @@ class QdrantVectorStoreTest {
     void searchRespectsTopKLimit() {
         String documentId = UUID.randomUUID().toString();
         for (int i = 0; i < 5; i++) {
-            store.add(new ChunkRecord(UUID.randomUUID().toString(), documentId, "文本 " + i, "f.txt", i, unitVector(0), SparseEmbedding.empty()));
+            store.add(new ChunkRecord(UUID.randomUUID().toString(), documentId, "文本 " + i, "f.txt", i, unitVector(0), SparseEmbedding.empty(), null));
         }
 
-        List<VectorMatch> matches = store.search(unitVector(0), 2, 0.0);
+        List<VectorMatch> matches = store.search(unitVector(0), 2, 0.0, null);
 
         assertThat(matches).hasSize(2);
     }
