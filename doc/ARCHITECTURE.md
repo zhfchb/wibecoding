@@ -39,7 +39,7 @@
 目标：从「RAG demo」升级为「RAG 项目」，补齐招聘市场要求的 AI 能力广度与 Java 后端基本功。
 
 - ✅ **真实 Embedding 接入**：`rag.embedding` 切换为 BGE-M3 对齐（dimension=1024），默认 hash 保证开箱即跑，配 key 后 `provider=openai` 启用真实语义检索；走独立 API（硅基流动），不复用 DeepSeek。
-- ✅ **检索质量评估**：新增 `RagEvaluationTest`，5 篇文档 + 5 个查询，计算 Recall@K 与 MRR。hash baseline：**Recall@3 = 80%、MRR = 0.8000**，作为简历效果指标数据来源。
+- ✅ **检索质量评估**：新增 `RagEvaluationTest`，5 篇文档 + 5 个查询，计算 Recall@K 与 MRR。hash baseline：**Recall@3 = 80%、MRR = 0.8000**；真实 BGE-M3（硅基流动）：**Recall@3 = 100%、MRR = 1.0000**（+20%），作为简历效果指标数据来源。
 - ✅ **SSE 流式输出**：`POST /api/v1/chat/stream`，基于 `OpenAiStreamingChatModel` + `SseEmitter` + `StreamingResponseHandler` 实现打字机效果；无命中时直接推送提示结束，不调用 LLM。
 - ✅ **Agent / Function Calling**：新增 `tools/TimeTools`、`tools/CalculatorTools`，基于 `AiServices` 动态代理注册工具；新增 `POST /api/v1/agent/chat`。系统提示通过 `@SystemMessage` 注解注入（0.35.0 的 `AiServices.builder()` 无 `systemMessage(String)` 方法）。
 
@@ -78,10 +78,32 @@
 - ✅ **GitHub Actions CI**:`.github/workflows/ci.yml`,push/PR 触发编译+测试+打包+上传 jar artifact。
 - ✅ **测试**:`mvn test` 23 测试全过,Swagger 集成不破坏现有功能。
 
+**M7 RAG 优化:混合检索 + Rerank 精排(2026-08-05,已完成 ✅)**
+
+- ✅ **混合检索(稠密 + 稀疏 + RRF)**:新增 `SparseEmbedding`/`SparseEmbeddingModel`/`HashingSparseModel`(客户端 TF-IDF 风格稀疏编码,复用 LexicalHashEmbeddingModel 分词,哈希到 65536 维 + top 512 截断)。`VectorStore` 新增 5-arg `search(dense, sparse, topK, minScore, rrfK)`。
+- ✅ **Qdrant 原生 hybrid**:集合 schema 改为命名向量 `dense`(Cosine)+ `sparse`(sparse_vectors);检索改用 `/points/query`,两路 `prefetch` + `fusion.rrf(k=60)` 原生融合,空稀疏时退化为单路稠密。
+- ✅ **dev 混合检索**:`InMemoryVectorStore` 实现稠密 cosine 排名 + 稀疏点积排名 + RRF 融合,行为与 Qdrant 对齐,零外部服务。
+- ✅ **Rerank 精排**:`RerankModel` 接口 + `SiliconFlowRerankModel`(RESTClient 调硅基流动 `/rerank`,BGE-Reranker-v2-M3,按 `index` 回填 `relevance_score`)+ `NoopRerankModel`(兜底)。失败降级为按召回顺序截断。
+- ✅ **两段式 retrieve**:`RagChatServiceImpl#retrieve` 重构为「阶段一混合召回 recallTopK=20 → 阶段二精排截断 finalTopK=3」,控制送入 LLM 的 token 成本。
+- ✅ **来源归因元数据**:`ChunkRecord`/`VectorMatch`/`RagSource` 增加 `fileName` + `chunkIndex`;`KnowledgeServiceImpl` 上传时预计算稀疏向量并随切片存储。
+- ✅ **配置**:`RagProperties` 新增 `Hybrid`/`Rerank`;`application.yml` dev 默认 `hybrid.enabled=true`;`application-prod.yml` + `.env.prod.example` 新增 `RAG_HYBRID_*`/`RAG_RERANK_*` 环境变量,Rerank 默认复用 Embedding Key。
+- ✅ **测试**:新增 `HashingSparseModelTest`/`NoopRerankModelTest` + 混合检索与两段式用例,全量 36 测试通过(3 个 Qdrant 集成测试按环境变量跳过)。
+- ⚠️ **注意**:Qdrant 集合 schema 变更(默认向量 → 命名 dense + sparse),已有 `knowledge` 集合需 `DELETE /collections/knowledge` 后重建。
+
+**M8 自适应 RAG:LangGraph4j 状态图(2026-08-05,已完成 ✅)**
+
+- ✅ **langchain4j 升级 0.35.0 → 1.18.1**:LangGraph4j 1.8.22 官方要求 langchain4j 1.18.1。破坏性变更修复:`AiServices.builder().chatLanguageModel()` → `.chatModel()`;流式 `generate(messages, StreamingResponseHandler<AiMessage>)` → `chat(messages, StreamingChatResponseHandler)`,`onNext` → `onPartialResponse`,`onComplete` → `onCompleteResponse`。升级后 37 测试 0 回归。
+- ✅ **LangGraph4j 1.8.22 引入**:仅引入 `langgraph4j-core`(核心状态图),不引入 `langgraph4j-langchain4j` 集成包以避免 `langchain4j-skills:1.12.1-beta21` beta 依赖污染。节点逻辑直接复用 langchain4j 1.18.1 API + M7 检索组件。
+- ✅ **自适应 RAG 状态图**:新增 `rag.adaptive` 包(`AdaptiveRagState` + `AdaptiveRagGraphFactory`)。图结构:`START → rewrite_query → retrieve → grade_documents → [generate | rewrite_query | generate_fallback] → END`。状态字段:question/rewritten_question/documents/retrieval_score/generation/retry_count/accepted,用 `Channels.base` 覆写语义。
+- ✅ **节点逻辑**:`AdaptiveRagServiceImpl` 用方法引用做 NodeAction。rewrite 节点首次用原问题、重试时调 LLM 重写;retrieve 节点复用 M7 混合检索 + rerank;grade 节点评估 top1 分数 ≥ 阈值且非空 → accepted,retryCount +1;路由 accepted→generate / not accepted & retry≤max→rewrite / not accepted & retry>max→fallback。
+- ✅ **REST 接口**:新增 `RagController` `POST /api/v1/rag/adaptive`,`rag.adaptive.enabled=false` 时返回 501。
+- ✅ **配置**:`RagProperties` 新增 `Adaptive(enabled, maxRetries, minScore)`;`application.yml`/`application-prod.yml` 新增 `rag.adaptive` 配置块。
+- ✅ **兼容性修复**:`VectorMatch` 实现 `Serializable`(LangGraph4j 序列化状态值需要)。
+- ✅ **测试**:新增 `AdaptiveRagServiceTest` 5 个场景(高分直接生成/低分不重试兜底/低分重写成功/低分重写失败/空检索兜底),全量 42 测试通过。
+
 ### 2.2 规划中
 
 **AI 能力深化**：
-- RAG 优化：BM25 + 向量混合检索、rerank（BGE-Reranker）。
 - Agent 增强：更多工具（数据库查询、天气、知识库检索）、多轮工具编排。
 - LangGraph4j 复杂工作流：自适应 RAG（查询重写循环）、多 Agent 协作、状态持久化、Human-in-the-loop。
 
@@ -102,17 +124,19 @@
 | --- | --- | --- |
 | 语言 | Java 17 | 已用 |
 | 框架 | Spring Boot 3.3.5 | 已用 |
-| LLM 对话 | LangChain4j 0.35.0 + DeepSeek（OpenAI 兼容） | 已用 |
+| LLM 对话 | LangChain4j 1.18.1 + DeepSeek（OpenAI 兼容） | 已用 |
 | LLM 流式 | LangChain4j `OpenAiStreamingChatModel` + SSE | 已用 |
 | Agent | LangChain4j `AiServices` + `@Tool` Function Calling | 已用 |
-| Agent 编排 | LangGraph4j 1.8.x（有状态图、循环、多 Agent 协作、HITL） | 规划 |
+| Agent 编排 | LangGraph4j 1.8.22（有状态图、循环、自适应 RAG） | 已用 |
 | Embedding | BGE-M3（硅基流动 OpenAI 兼容）/ hash（本地演示） | 已用 |
 | 向量数据库 | Qdrant 1.19.x（docker compose） | 已用 |
+| 混合检索 | 稠密 + 稀疏（HashingSparseModel，TF-IDF 风格）+ RRF 融合 | 已用 |
+| Rerank | BGE-Reranker-v2-M3（硅基流动 `/rerank`）+ Noop 兜底 | 已用 |
 | 关系型数据库 | MySQL 8.0 + MyBatis-Plus 3.5.7 | 已用 |
 | 缓存 | Redis 7（会话上下文、TTL 过期） | 已用 |
 | 认证 | Spring Security 6 + JWT（jjwt 0.12.6，HS256）+ BCrypt | 已用 |
-| API 文档 | springdoc-openapi（Swagger） | 规划 |
-| 容器化 | Docker + docker-compose（全栈一键起） | 规划 |
+| API 文档 | springdoc-openapi（Swagger） | 已用 |
+| 容器化 | Docker + docker-compose（全栈一键起） | 已用 |
 | 构建 | Maven | 已用 |
 
 ## 4. 系统分层
@@ -269,7 +293,42 @@ LLM 根据用户问题自动决策调用哪个 `@Tool`，拿到工具返回值�
 
 响应:所有用户列表。
 
-### 6.7 规划接口
+### 6.7 自适应 RAG 接口（M8）
+
+`POST /api/v1/rag/adaptive`（需登录）
+
+请求体：`{"message": "问题", "sessionId": "可选"}`
+
+响应：`RagChatResponse`（与 `POST /api/v1/chat` 同结构，含 answer/sessionId/sources）。
+
+行为：基于 LangGraph4j 状态图编排「查询重写 → 检索 → 质量评分 → 重试/生成」循环。检索 top1 分数低于 `rag.adaptive.min-score` 时自动重写查询重试（最多 `rag.adaptive.max-retries` 次），重试耗尽走兜底回答。`rag.adaptive.enabled=false` 时返回 501。
+
+### 6.8 多 Agent 协作接口（M9）
+
+三 Agent + HITL 人工审核工作流，采用异步任务模式（提交→轮询→审批）。
+
+`POST /api/v1/agent/multi-agent`（需登录）— 提交问题
+- 请求体：`{"question": "问题"}`
+- 行为：检索 Agent 找资料 → 生成 Agent 写草稿 → 执行到审核节点前 interrupt 暂停
+- 响应：`MultiAgentTask`（状态 AWAITING_REVIEW + 草稿 draft + sources）
+- `rag.multi-agent.enabled=false` 时返回 501
+
+`GET /api/v1/agent/tasks/{taskId}`（需登录）— 轮询任务状态
+- 响应：`MultiAgentTask`（含 status/draft/finalAnswer/sources/rejectCount/reviewFeedback）
+
+`POST /api/v1/agent/tasks/{taskId}/approve`（需登录）— 审批通过
+- 行为：注入 approved=true，图 resume 到 END，最终答案即草稿
+- 响应：`MultiAgentTask`（状态 COMPLETED）
+
+`POST /api/v1/agent/tasks/{taskId}/reject`（需登录）— 审批拒绝
+- 请求体：`{"feedback": "拒绝原因/修改建议"}`
+- 行为：注入 approved=false + feedback + rejectCount+1，resume 后生成 Agent 带反馈重写草稿，再到审核节点前 interrupt
+- 达到 `rag.multi-agent.max-rejects` 次后强制通过（避免无限循环）
+- 响应：`MultiAgentTask`（状态 AWAITING_REVIEW 或 COMPLETED）
+
+任务状态流转：`RUNNING → AWAITING_REVIEW ─approve→ COMPLETED` 或 `─reject→ AWAITING_REVIEW（重写）` 或 `─reject(maxRejects)→ COMPLETED`。
+
+### 6.9 规划接口
 
 - `GET /api/v1/tools`:查看可用 Agent 工具列表。
 
@@ -288,7 +347,11 @@ LLM 根据用户问题自动决策调用哪个 `@Tool`，拿到工具返回值�
   - `rag.embedding.model-name`：模型名（默认 `BAAI/bge-m3`）
   - `rag.embedding.base-url` / `rag.embedding.api-key`：独立 Embedding API（硅基流动）
   - `rag.chunking.max-chars` / `rag.chunking.overlap-chars`：切分参数
-  - `rag.retrieval.top-k` / `rag.retrieval.min-score`：检索参数
+  - `rag.retrieval.top-k` / `rag.retrieval.min-score`：检索参数（top-k 为精排后最终数量）
+  - `rag.hybrid.enabled` / `rag.hybrid.recall-top-k` / `rag.hybrid.rrf-k`：混合检索（稠密+稀疏+RRF）
+  - `rag.rerank.enabled` / `rag.rerank.provider` / `rag.rerank.model-name` / `rag.rerank.top-k`：Rerank 精排（硅基流动 BGE-Reranker-v2-M3）
+  - `rag.adaptive.enabled` / `rag.adaptive.max-retries` / `rag.adaptive.min-score`：自适应 RAG（M8，LangGraph4j 状态图）
+  - `rag.multi-agent.enabled` / `rag.multi-agent.max-rejects`：多 Agent 协作（M9，三角色 + HITL 审核）
   - `rag.vector-store.type`：`memory` / `qdrant`
   - `rag.vector-store.qdrant-url` / `rag.vector-store.collection-name`：Qdrant 连接
   - `rag.upload.max-file-size-bytes` / `rag.upload.allowed-extensions`：上传校验
@@ -334,8 +397,9 @@ mvn test "-Dtest=RagEvaluationTest"
 | M4 | Java 后端基本功：MySQL + MyBatis-Plus + Redis 多轮会话 | 已完成 |
 | M5 | 认证授权：Spring Security + JWT | 已完成 |
 | M6 | 工程化：Swagger + Dockerfile + 全栈 docker-compose + CI | 已完成 |
-| M7 | RAG 优化：混合检索 + rerank + 效果对比 | 规划 |
-| M8 | LangGraph4j 复杂 Agent：自适应 RAG（查询重写循环）+ 多 Agent 协作 + Human-in-the-loop | 规划 |
+| M7 | RAG 优化：混合检索 + rerank + 效果对比 | 已完成 |
+| M8 | LangGraph4j 自适应 RAG：查询重写循环 + langchain4j 1.18.1 升级 | 已完成 |
+| M9 | 多 Agent 协作 + HITL：检索/生成/审核三角色 + 人工审批中断/恢复 | 已完成 |
 
 ## 10. 招聘市场对标
 
@@ -348,12 +412,12 @@ mvn test "-Dtest=RagEvaluationTest"
 | RAG 全流程（切分→Embedding→检索→生成） | ✅ 已完成 | "实现 RAG 全流程，支持 txt/md" |
 | 真实语义 Embedding（BGE-M3） | ✅ 已接入 | "基于 BGE-M3 实现语义检索" |
 | 向量数据库（Qdrant） | ✅ 已完成 | "基于 Qdrant 实现向量存储与检索" |
-| 检索质量评估（Recall@K / MRR） | ✅ 已完成 | "构建评测集，Recall@3 达 80%（hash baseline）" |
+| 检索质量评估（Recall@K / MRR） | ✅ 已完成 | "构建评测集，hash baseline Recall@3=80% → 真实 BGE-M3 Recall@3=100%（+20%）" |
 | 流式输出（SSE） | ✅ 已完成 | "基于 SSE 实现流式响应，打字机效果" |
 | Agent / Function Calling | ✅ 已完成 | "基于 Function Calling 实现 Agent 工具编排" |
-| 混合检索 + rerank | 🔲 规划 | 待 M7 |
+| 混合检索 + rerank | ✅ 已完成 | "稠密+稀疏混合检索（RRF 融合）+ BGE-Reranker-v2-M3 精排，两段式 recall@20→top3" |
 | 多轮会话 + 上下文管理 | ✅ 已完成 | "Redis 维护多轮会话上下文，支持历史拼接" |
-| LangGraph4j 有状态图编排（循环/多 Agent/HITL） | 🔲 规划 | 待 M8 |
+| LangGraph4j 有状态图编排（自适应 RAG 循环） | ✅ 已完成 | "基于 LangGraph4j 状态图实现自适应 RAG：查询重写→检索→质量评分→重试/生成，检索不足自动重写重试" |
 
 ### 10.2 Java 后端岗能力对标
 
@@ -376,17 +440,21 @@ mvn test "-Dtest=RagEvaluationTest"
 
 > 基于 Spring Boot 3 + LangChain4j + Qdrant 构建智能知识库系统：
 > ① 设计文档切分与语义 Embedding（BGE-M3）管线，支持 txt/md 上传，自定义切分策略（段落+语句边界、最大长度+重叠）；
-> ② 实现 Qdrant 向量存储与检索，构建评测集验证检索质量，Recall@3 达 80%（hash baseline），真实 Embedding 下进一步提升；
-> ③ 基于 Function Calling 实现 Agent 工具编排（时间查询、计算器），LLM 自动决策调用工具；
-> ④ 基于 SSE 实现流式响应，打字机效果降低首字延迟；
-> ⑤ MySQL + MyBatis-Plus 持久化文档元数据与对话历史，Redis 维护多轮会话上下文；
-> ⑥ Spring Security + JWT 实现用户认证与接口鉴权；
-> ⑦ Docker Compose 一键部署全栈（应用 + Qdrant + MySQL + Redis）；
-> ⑧ 基于 LangGraph4j 实现自适应 RAG，检索质量不达标时自动重写查询重试，支持人工审批高风险问题。
+> ② 实现 Qdrant 向量存储与检索，构建评测集验证检索质量，hash baseline Recall@3=80%，接入真实 BGE-M3 后 Recall@3=100%、MRR=1.0（+20%），语义检索修复了 hash 的关键词重合 miss；
+> ③ 实现稠密（语义）+ 稀疏（关键词 BM25 风格）混合检索，Qdrant `/points/query` 两路 prefetch + RRF 融合；再接 BGE-Reranker-v2-M3 精排，两段式 recall@20 → top3，提升精排准确率并控制 token 成本；
+> ④ 基于 Function Calling 实现 Agent 工具编排（时间查询、计算器），LLM 自动决策调用工具；
+> ⑤ 基于 SSE 实现流式响应，打字机效果降低首字延迟；
+> ⑥ MySQL + MyBatis-Plus 持久化文档元数据与对话历史，Redis 维护多轮会话上下文；
+> ⑦ Spring Security + JWT 实现用户认证与接口鉴权；
+> ⑧ Docker Compose 一键部署全栈（应用 + Qdrant + MySQL + Redis）；
+> ⑨ 基于 LangGraph4j 状态图实现自适应 RAG，检索质量不达标时自动重写查询重试，重试耗尽走兜底回答；同步升级 langchain4j 0.35.0 → 1.18.1 适配 LangGraph4j 1.8.22。
 
 面试可深聊点（每个点都有代码支撑）：
 - RAG 切分策略为什么这样设计？重叠窗口的作用？
 - hash vs 真实 Embedding 检索效果差异？如何评估？
+- 为什么要混合检索？稠密和稀疏各解决什么问题？RRF 融合公式与常数 k 的作用？
+- Rerank 精排为什么能提升效果？两段式 recall@20 → top3 如何平衡召回率与 token 成本？rerank 失败如何降级？
+- Qdrant 命名向量与 sparse_vectors 怎么配置？`/points/query` 的 prefetch + fusion.rrf 与 `/points/search` 区别？
 - SSE 流式响应的实现原理？为什么不用 WebSocket？
 - Function Calling 的执行流程？LLM 如何决策调用工具？
 - Qdrant 的 point ID 为什么必须是 UUID？
@@ -406,13 +474,13 @@ mvn test "-Dtest=RagEvaluationTest"
 ## 12. 待办与风险
 
 - **M3 Agent 编译错误**：✅ 已修复（2026-08-04）。`AiServices.builder()` 在 0.35.0 无 `systemMessage(String)` 方法，改用 `@SystemMessage` 注解注入系统提示。
-- **真实 Embedding 未联调**：hash baseline 已验证，但未用真实 BGE-M3 key 跑过端到端，需配硅基流动 key 后验证检索效果提升。
+- **真实 Embedding 已联调验证**：硅基流动 BGE-M3，Recall@3 从 hash baseline 80% 提升到 100%（MRR 0.8→1.0），5 个查询全部 rank=1 命中。
 - **MySQL 未接入**：✅ 已完成（2026-08-04）。M4 接入 MySQL 8.0 + MyBatis-Plus，文档元数据与对话历史已持久化。
 - **单轮问答**：✅ 已解决（2026-08-04）。M4 接入 Redis 多轮会话，支持 sessionId + 历史拼接。
 - **`QdrantVectorStore` ID 约束**：要求 chunk ID 为 UUID 或无符号整数，调用方需遵守（`KnowledgeServiceImpl` 已使用 UUID）。
 - **`user` 表保留字冲突**：✅ 已解决(2026-08-05)。H2/MySQL 中 `user` 是保留字,表名改用 `sys_user` 避免冲突。
-- **LangGraph4j 学习曲线**：图编排思维（节点+边+共享状态）与线性 Agent 差异大，M8 需预留学习时间；建议先做自适应 RAG 单循环场景验证，再扩展多 Agent。
-- **LangGraph4j 版本兼容**：需确认 1.8.x 与 Spring Boot 3.3.5 + LangChain4j 0.35.0 的版本兼容性，避免依赖冲突。
+- **LangGraph4j 学习曲线**：✅ 已完成自适应 RAG 单循环（M8）+ 多 Agent 协作与 HITL（M9）验证。图编排思维（节点+边+共享状态）与线性 Agent 差异大，已通过 `AdaptiveRagGraphFactory`（单图自循环）和 `MultiAgentGraphFactory`（三 Agent + interruptBefore/resume）落地。
+- **LangGraph4j 版本兼容**：✅ 已解决（M8）。LangGraph4j 1.8.22 官方要求 langchain4j 1.18.1，已同步升级 langchain4j 0.35.0 → 1.18.1 并修复破坏性变更；仅引入 `langgraph4j-core` 避免集成包的 beta 依赖污染。
 - **`doc/ARCHITECTURE.md` 规划项与代码实现需要随迭代同步更新**。
 
 ## 13. AI 编码协作原则

@@ -39,7 +39,7 @@ jwt:
 rag:
   embedding:
     # hash：本地零依赖演示，无真实语义能力；openai：接 OpenAI 兼容的真实 Embedding API（推荐硅基流动 BGE-M3）
-    provider: hash
+    provider: openai
     dimension: 1024   # 与 BGE-M3 对齐，切换 provider=openai 时无需重建向量库
     model-name: BAAI/bge-m3
     # 真实 Embedding 走独立 API，不复用 DeepSeek（DeepSeek 暂无 Embedding 接口）
@@ -55,12 +55,34 @@ rag:
     type: memory       # memory 开箱即跑；qdrant 需要 docker compose up -d
     qdrant-url: http://localhost:6333
     collection-name: knowledge
+  # 混合检索：稠密(语义) + 稀疏(关键词 BM25 风格)，RRF 融合
+  hybrid:
+    enabled: true      # dev 也启用，InMemoryVectorStore/Qdrant 均支持
+    recall-top-k: 20   # 召回候选数（精排前）
+    rrf-k: 60          # RRF 常数 k
+  # Rerank 精排：硅基流动 BGE-Reranker-v2-M3
+  rerank:
+    enabled: false     # 需要 api-key；无 key 时即使 true 也自动降级为 Noop
+    provider: siliconflow
+    base-url: https://api.siliconflow.cn/v1
+    api-key: ""        # 在 application-dev.yml 覆盖；与 embedding api-key 可共用
+    model-name: BAAI/bge-reranker-v2-m3
+    top-k: 3           # 精排后保留数量；0 表示用 retrieval.top-k
   upload:
     max-file-size-bytes: 2097152
     allowed-extensions:
       - txt
       - md
       - markdown
+  # 自适应 RAG（M8）：LangGraph4j 状态图，查询重写→检索→评分→重试/生成
+  adaptive:
+    enabled: true       # 开关；关闭时 POST /api/v1/rag/adaptive 返回 501
+    max-retries: 1      # 查询重写重试次数（0=单次检索不重写）
+    min-score: 0.35     # top1 检索分阈值，低于此值触发重写或兜底
+  # 多 Agent 协作（M9）：检索 Agent → 生成 Agent → HITL 人工审核
+  multi-agent:
+    enabled: true       # 开关；关闭时 POST /api/v1/agent/multi-agent 返回 501
+    max-rejects: 2      # 最多被拒绝次数，超过后强制通过（避免无限循环）
 
 # springdoc / Swagger UI 配置
 springdoc:

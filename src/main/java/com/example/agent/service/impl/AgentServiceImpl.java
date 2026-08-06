@@ -19,7 +19,7 @@ public class AgentServiceImpl implements AgentService {
 
     public AgentServiceImpl(OpenAiChatModel chatModel) {
         this.assistant = AiServices.builder(Assistant.class)
-                .chatLanguageModel(chatModel)
+                .chatModel(chatModel)
                 .tools(new TimeTools(), new CalculatorTools())
                 .build();
     }

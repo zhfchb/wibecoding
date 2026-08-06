@@ -1,5 +1,188 @@
 # 变更日志
 
+## 2026-08-06
+
+### M9 多 Agent 任务持久化：MySQL Checkpoint Saver + 前端调试界面 完成 ✅
+
+针对用户反馈「进程重启会丢失正在审核中的任务」，将 M9 的内存态 checkpoint（`MemorySaver`）和任务表（`ConcurrentHashMap`）替换为 MySQL 持久化，进程重启后可恢复 AWAITING_REVIEW 状态的任务。同时开发 React 前端界面供直观调试。
+
+**MySQL Checkpoint 持久化**
+- [schema.sql](file:///e:/Projects/wibecoding/src/main/resources/schema.sql) 新增两张 H2/MySQL 兼容表：
+  - `langgraph_checkpoint`：thread_id / checkpoint_id / node_id / next_node_id / state_json（TEXT），按 thread_id 建索引。
+  - `multi_agent_task`：task_id / thread_id / question / status / draft / final_answer / sources_json / reject_count / review_feedback / 时间戳，按 task_id / status / thread_id 建索引。
+  - 数据类型用 `TEXT` / `TIMESTAMP` 而非 `LONGTEXT` / `DATETIME`，保证 H2 测试环境兼容。
+- 新增 [LangGraphCheckpointEntity](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/entity/LangGraphCheckpointEntity.java) + [LangGraphCheckpointMapper](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/mapper/LangGraphCheckpointMapper.java)。
+- 新增 [MultiAgentTaskEntity](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/entity/MultiAgentTaskEntity.java) + [MultiAgentTaskMapper](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/mapper/MultiAgentTaskMapper.java)。
+- 新增 [MysqlCheckpointSaver](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/rag/MysqlCheckpointSaver.java)：实现 `BaseCheckpointSaver`，用 Jackson 把 state Map 序列化为 JSON 存库；list/get/put/release 四方法。
+  - 不引入 `langgraph4j-mysql-saver` 官方包，避免 mysql-connector-j 9.2.0 与项目 8.3.0 的版本冲突。
+- [MultiAgentServiceImpl](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/service/impl/MultiAgentServiceImpl.java) 改造：
+  - 生产构造器注入 `LangGraphCheckpointMapper`，内部 `new MysqlCheckpointSaver(mapper)`；保留测试构造器直接注入 `BaseCheckpointSaver`（测试用 `MemorySaver`）。
+  - submit/approve/reject 三接口的任务读写全部走 `MultiAgentTaskMapper`（落 MySQL），不再用 `ConcurrentHashMap`。
+  - `updateTaskFromState` 从 checkpoint 状态同步 draft/sources/rejectCount 到任务表；处理反序列化后 `documents` 是 `List<LinkedHashMap>` 的泛型擦除问题（`instanceof Map` 判断 + 手动转 `RagSource`）。
+
+**重启恢复接口**
+- [MultiAgentService](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/service/MultiAgentService.java) 新增 `listPendingTasks()`：查询所有 AWAITING_REVIEW 状态任务，按创建时间升序。
+- [MultiAgentController](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/controller/MultiAgentController.java) 新增 `GET /api/v1/agent/tasks/pending`：进程重启后前端调此接口恢复遗留待审核任务列表。
+- `listPendingTasks` 用 `selectList(null)` 查全表 + Java stream filter（任务表数据量小，避免 LambdaQueryWrapper 在测试 mock 中难以解析）。
+
+**Bug 修复**
+- 双构造器导致 Spring 无法选定注入构造器，`AuthControllerTest` 等 12 个 `@SpringBootTest` 测试报 `No default constructor found`。给生产构造器加 `@Autowired` 注解明确指定，测试构造器不加（仅供测试 `new` 调用）。
+
+**测试状态**
+- 修复前：47 tests, 0 failures, 12 errors（AuthControllerTest 上下文加载失败 + RagEvaluationTest 因 dummy key 鉴权失败）。
+- 修复后：48 tests, 0 failures, 0 errors, 1 skipped（RagEvaluationTest 无真实 key 跳过）。新增 `listPendingTasks_returnsAwaitingReviewTasks` 测试。
+
+**React + Vite 前端调试界面**
+- 技术栈：React 18 + Vite 5 + Ant Design 5 + React Router 6 + Axios。
+- 前端代码位于 [frontend/](file:///e:/Projects/wibecoding/frontend/) 目录，Node.js 路径 `E:\software\nodejs`。
+- Vite dev server 端口 5173，proxy `/api` → `localhost:8080` 避免跨域。
+- 页面：
+  - [LoginPage](file:///e:/Projects/wibecoding/frontend/src/pages/LoginPage.jsx)：登录/注册 Tab，JWT 存 localStorage，默认账号提示。
+  - [ChatPage](file:///e:/Projects/wibecoding/frontend/src/pages/ChatPage.jsx)：RAG 对话面板，支持流式/非流式切换；SSE 用 fetch + ReadableStream 逐 token 追加，显示来源标签。
+  - [AgentPage](file:///e:/Projects/wibecoding/frontend/src/pages/AgentPage.jsx)：多 Agent 任务面板，提交问题 + 待审核任务列表 + 审批通过/拒绝弹窗（带反馈）；调 `GET /tasks/pending` 恢复遗留任务。
+  - [KnowledgePage](file:///e:/Projects/wibecoding/frontend/src/pages/KnowledgePage.jsx)：知识库管理，拖拽上传 txt/md/markdown + 分页表格显示文档列表。
+- [AuthContext](file:///e:/Projects/wibecoding/frontend/src/context/AuthContext.jsx)：全局认证状态 + login/register/logout。
+- [api/index.js](file:///e:/Projects/wibecoding/frontend/src/api/index.js)：Axios 实例 + JWT 拦截器 + 401 自动跳登录 + SSE streamChat 封装。
+- 浏览器验证全通过：登录成功、三个页面渲染正常、API 连通正常。
+
+**启动方式**
+- 后端：`mvn spring-boot:run`（端口 8080）
+- 前端：`cd frontend; npm run dev`（端口 5173，自动代理到 8080）
+
+## 2026-08-05
+
+### M9 多 Agent 协作 + HITL 人工审核 完成 ✅
+
+基于 LangGraph4j 1.8.22 状态图编排「检索 Agent → 生成 Agent → HITL 人工审核」三角色分工工作流，支持人工审批中断/恢复与拒绝重生成循环。
+
+**多 Agent 架构**
+- 图结构：`START → retrieve_agent → generate_agent → review_node ─interruptBefore─→ [HITL 暂停]`，审核后 `approved → END` 或 `rejected → generate_agent（带反馈重写）`。
+- 新增 [MultiAgentState](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/workflow/multiagent/MultiAgentState.java)：状态对象（question/documents/draft/review_feedback/final_answer/reject_count/approved）。
+- 新增 [MultiAgentGraphFactory](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/workflow/multiagent/MultiAgentGraphFactory.java)：图工厂，用 `CompileConfig.checkpointSaver().interruptBefore(REVIEW_NODE)` 配置 HITL 中断点。
+- 新增 [MultiAgentServiceImpl](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/service/impl/MultiAgentServiceImpl.java)：节点动作 + 任务管理。
+  - 检索 Agent 复用 M7 混合检索 + rerank；生成 Agent 首生用 GENERATE_PROMPT，rejected 重写用 REGENERATE_PROMPT（带反馈）。
+  - HITL 流转：`submit` 执行到 review 前 interrupt → `approve` 注入 approved=true + resume → END；`reject` 注入 approved=false + feedback + rejectCount+1 + resume → 重写 → 再 interrupt（达 maxRejects 则强制通过）。
+  - checkpoint 用 `MemorySaver`（内存态），任务表用 `ConcurrentHashMap`。
+
+**REST 接口（异步任务模式）**
+- 新增 [MultiAgentController](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/controller/MultiAgentController.java)：
+  - `POST /api/v1/agent/multi-agent`：提交问题，返回 taskId + 草稿（状态 AWAITING_REVIEW）。
+  - `GET /api/v1/agent/tasks/{taskId}`：轮询任务状态。
+  - `POST /api/v1/agent/tasks/{taskId}/approve`：审批通过。
+  - `POST /api/v1/agent/tasks/{taskId}/reject`：审批拒绝，body 带 feedback。
+
+**配置**
+- `RagProperties` 新增 `MultiAgent(enabled, maxRejects)`。
+- `application.yml` / `application-prod.yml` 新增 `rag.multi-agent` 配置块。
+- 4 处测试 `RagProperties` 构造点同步更新（补 MultiAgent 参数）。
+
+**测试**
+- 新增 [MultiAgentServiceTest](file:///e:/Projects/wibecoding/src/test/java/com/example/agent/service/MultiAgentServiceTest.java)：5 条 HITL 流转路径（提交中断/通过完成/拒绝重写后通过/达 maxRejects 强制通过/空问题异常）。
+- 全量测试 47 tests, 0 failures, 0 errors, 0 skipped（M8 的 42 + M9 的 5）。
+
+### M8 自适应 RAG：LangGraph4j 状态图 + langchain4j 1.18.1 升级 完成 ✅
+
+基于 LangGraph4j 1.8.22 状态图实现「查询重写 → 检索 → 质量评分 → 重试/生成」自适应 RAG 循环；为兼容 LangGraph4j 同步升级 langchain4j 0.35.0 → 1.18.1。
+
+**langchain4j 0.35.0 → 1.18.1 升级**
+- [pom.xml](file:///e:/Projects/wibecoding/pom.xml) `langchain4j.version` 升级到 1.18.1（LangGraph4j 1.8.22 官方要求版本）。
+- 破坏性变更修复：
+  - `AgentServiceImpl`：`AiServices.builder().chatLanguageModel()` → `.chatModel()`。
+  - `RagChatServiceImpl` 流式 API：`generate(messages, StreamingResponseHandler<AiMessage>)` → `chat(messages, StreamingChatResponseHandler)`；`onNext` → `onPartialResponse`；`onComplete(Response<AiMessage>)` → `onCompleteResponse(ChatResponse)`。
+  - `ChatServiceImpl` / `RagChatServiceImpl` 同步对话已用 `ChatRequest` + `chat(ChatRequest)` 1.x 风格，无需改。
+- 升级后全量 37 测试 0 回归（1 个 RagEvaluationTest 因缺 SiliconFlow key 跳过）。
+
+**LangGraph4j 1.8.22 引入**
+- 仅引入 `langgraph4j-core`（核心状态图能力），不引入 `langgraph4j-langchain4j` 集成包以避免 `langchain4j-skills:1.12.1-beta21` beta 依赖污染。节点逻辑直接复用项目已有的 langchain4j 1.18.1 API + M7 检索组件。
+- 新增 [AdaptiveRagState](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/rag/adaptive/AdaptiveRagState.java)：状态对象（question/rewritten_question/documents/retrieval_score/generation/retry_count/accepted），用 `Channels.base` 覆写语义。
+- 新增 [AdaptiveRagGraphFactory](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/rag/adaptive/AdaptiveRagGraphFactory.java)：图结构工厂，组装 `rewrite_query → retrieve → grade_documents → [generate | rewrite_query | generate_fallback]` 状态图。
+- 新增 [AdaptiveRagServiceImpl](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/service/impl/AdaptiveRagServiceImpl.java)：节点动作实现，检索逻辑复用 M7 混合检索 + rerank；查询重写节点首次用原问题，重试时调 LLM 重写。
+
+**REST 接口**
+- 新增 [RagController](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/controller/RagController.java) `POST /api/v1/rag/adaptive`：自适应 RAG 对话，`rag.adaptive.enabled=false` 时返回 501。
+
+**配置**
+- `RagProperties` 新增 `Adaptive(enabled, maxRetries, minScore)`。
+- `application.yml` / `application-prod.yml` 新增 `rag.adaptive` 配置块。
+- 3 处测试 `RagProperties` 构造点同步更新。
+
+**兼容性修复**
+- `VectorMatch` 实现 `Serializable`：LangGraph4j `CompiledGraph` 在构建节点输出时序列化状态值，record 需实现 Serializable。
+
+**测试**
+- 新增 [AdaptiveRagServiceTest](file:///e:/Projects/wibecoding/src/test/java/com/example/agent/service/AdaptiveRagServiceTest.java) 5 个场景：高分直接生成 / 低分不重试兜底 / 低分重写成功生成 / 低分重写失败兜底 / 空检索兜底，覆盖全部路由路径。
+- 全量 `mvn test`：**Tests run: 42, Failures: 0, Errors: 0, Skipped: 1**，BUILD SUCCESS。
+
+## 2026-08-05
+
+### 可靠性补强:schema 版本化 + 真实 Embedding 评测支持
+
+针对 M7 代码审计发现的维护性隐患,补齐 schema 迁移脚本与真实 Embedding 评测能力。
+
+**Qdrant schema 版本化**
+- 新增 [scripts/qdrant-setup.ps1](file:///e:/Projects/wibecoding/scripts/qdrant-setup.ps1):可重复执行的 Qdrant 集合初始化/迁移脚本,支持 `-Recreate` 删除重建,幂等。实测验证通过(集合 `knowledge` 已按 M7 schema 重建:dense 1024d Cosine + sparse)。
+- 新增 [scripts/qdrant-migration.md](file:///e:/Projects/wibecoding/scripts/qdrant-migration.md):记录 Qdrant 集合 schema v1(默认未命名向量)→ v2(命名 dense+sparse)的演进与升级步骤,明确与 MySQL `schema.sql` 的职责边界。
+- [src/main/resources/schema.sql](file:///e:/Projects/wibecoding/src/main/resources/schema.sql) 顶部补版本注释与表清单,明确它只管 MySQL 三张表,Qdrant 指向 `qdrant-setup.ps1`。
+
+**真实 Embedding 评测支持**
+- [RagEvaluationTest](file:///e:/Projects/wibecoding/src/test/java/com/example/agent/rag/RagEvaluationTest.java) 拆分为:
+  - `evaluateBaselineQuality`(always):hash baseline,Recall@3=80%,回归保护。
+  - `evaluateRealEmbeddingQuality`(`@EnabledIfEnvironmentVariable(RAG_EMBEDDING_API_KEY)`):真实 BGE-M3 评测,输出 baseline vs real 对比报告(Recall/MRR 提升量)。无 key 自动跳过,CI 不受影响。
+- 抽取 `runEvaluation(model, label)` 公共评测逻辑,消除重复。
+- **注意**:真实 Embedding 评测需要硅基流动独立 API Key(与 DeepSeek key 不通用),当前因 key 无效未拿到真实 recall 数据,待补。
+
+### 真实 Embedding 联调验证完成 ✅
+
+- **修复 BGE-M3 参数错误**:BGE-M3 原生输出 1024 维,不接受 `dimensions` 参数(传了报 `code:20015 parameter invalid`)。移除 [RagEvaluationTest](file:///e:/Projects/wibecoding/src/test/java/com/example/agent/rag/RagEvaluationTest.java) 与 [RagConfig](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/config/RagConfig.java) 中 OpenAiEmbeddingModel 的 `.dimensions()` 调用,`dimension` 配置项保留给 Qdrant 集合 size 与 hash baseline。
+- **真实 BGE-M3 评测结果**:
+  - hash baseline:Recall@3 = 80%(4/5),MRR = 0.8000
+  - 真实 BGE-M3(硅基流动):**Recall@3 = 100%(5/5),MRR = 1.0000**
+  - **提升:+20% Recall,+0.2 MRR**,5 个查询全部 rank=1 精准命中
+  - 修复的 miss:hash baseline 下"RAG 是怎么工作的"命中 doc-spring(词面重叠),BGE-M3 正确命中 doc-rag(语义理解)
+- **配置启用真实 Embedding**:[application.yml](file:///e:/Projects/wibecoding/src/main/resources/application.yml) `rag.embedding.provider` 改为 `openai`;[application-dev.yml](file:///e:/Projects/wibecoding/src/main/resources/application-dev.yml) 填入硅基流动 key。
+- 文档同步更新:ARCHITECTURE.md 检索质量评估数据、简历素材、待办风险全部更新为真实 BGE-M3 数据。
+
+**测试**
+- `mvn test`:**Tests run: 37, Failures: 0, Errors: 0, Skipped: 1**(真实 Embedding 测试因无有效 key 跳过;Qdrant 集成测试带 `QDRANT_URL` 全部通过),BUILD SUCCESS。
+
+## 2026-08-05
+
+### M7 RAG 优化:混合检索 + Rerank 精排 完成 ✅
+
+将单路稠密检索升级为「稠密(语义) + 稀疏(关键词) 混合召回 → Rerank 精排」两段式架构,显著提升召回覆盖率与精排准确率,并补齐来源归因元数据。
+
+**混合检索(稠密 + 稀疏 + RRF)**
+- 新增 `SparseEmbedding`(indices/values)+ `SparseEmbeddingModel` 接口 + `HashingSparseModel` 实现:客户端 TF-IDF 风格稀疏编码(1+log(tf)),复用与 `LexicalHashEmbeddingModel` 一致的分词(拉丁词/中文单字+二元组),哈希到 65536 维空间并截断 top 512 词项,dev/prod 一致无需外部服务。
+- `VectorStore` 新增 `search(dense, sparse, topK, minScore, rrfK)` 混合检索方法,保留原 3-arg 纯稠密方法兼容。
+- `QdrantVectorStore`:集合 schema 改为命名向量 `dense`(Cosine)+ `sparse`(sparse_vectors);检索改用 `/points/query`,dense+sparse 两路 `prefetch` + `fusion.rrf(k=60)` 原生融合;空稀疏时退化为单路稠密查询。
+- `InMemoryVectorStore`:实现稠密 cosine 排名 + 稀疏点积排名 + RRF 融合,dev 环境行为与 Qdrant 对齐。
+- RRF 融合公式:`score = Σ 1/(k + rank)`,常数 k=60。
+
+**Rerank 精排(硅基流动 BGE-Reranker-v2-M3)**
+- 新增 `RerankModel` 接口 + `SiliconFlowRerankModel`(RESTClient 调 `/rerank`,`return_documents=false`,按 `index` 回填 `relevance_score`)+ `NoopRerankModel`(兜底截断)。
+- 失败降级:API 异常或空结果时记日志并按召回顺序截断,不阻断主流程。
+- `RagChatServiceImpl#retrieve` 重构为两段式:阶段一混合召回 `recallTopK=20` → 阶段二精排截断 `finalTopK=3`,控制送入 LLM 的 token 成本。
+
+**元数据扩展(来源归因)**
+- `ChunkRecord` / `VectorMatch` / `RagSource` 增加 `fileName` + `chunkIndex`,支撑精排特征与 UI 来源引用。
+- `KnowledgeServiceImpl` 上传时写入 `fileName`/`chunkIndex` 并预计算稀疏向量随切片存储。
+
+**配置**
+- `RagProperties` 新增 `Hybrid(enabled, recallTopK, rrfK)` 与 `Rerank(enabled, provider, baseUrl, apiKey, modelName, topK)`。
+- `RagConfig` 注入 `SparseEmbeddingModel`(无条件)与 `RerankModel`(按 provider/apiKey 选择 SiliconFlow 或 Noop)。
+- `application.yml`:dev 默认 `hybrid.enabled=true`,`rerank.enabled=false`(需 key)。
+- `application-prod.yml` + `.env.prod.example`:新增 `RAG_HYBRID_*` / `RAG_RERANK_*` 环境变量,Rerank 默认复用 Embedding Key。
+
+**测试**
+- 新增 `HashingSparseModelTest`(4)、`NoopRerankModelTest`(3)、`InMemoryVectorStoreTest` 加 2 个混合检索用例、`RagChatServiceTest` 加 1 个两段式(混合召回+rerank)验证。
+- 修复 `ChunkRecord`/`VectorMatch`/`RagProperties` 签名变更引起的测试构造调用。
+- `mvn test`:**Tests run: 36, Failures: 0, Errors: 0, Skipped: 3**(Qdrant 集成测试按环境变量跳过),BUILD SUCCESS。
+
+**注意**
+- Qdrant 集合 schema 变更(默认向量 → 命名 dense + sparse),已有 `knowledge` 集合需删除重建:`DELETE /collections/knowledge` 后首次写入自动按新 schema 创建。
+
+**M7 状态**:规划 → 已完成 ✅。混合检索 + Rerank 两段式 RAG 上线,dev 可零外部服务跑混合检索,生产接硅基流动 rerank。
+
 ## 2026-08-05
 
 ### M6 工程化:Swagger + Dockerfile + 全栈 docker-compose + CI 完成 ✅

@@ -9,6 +9,8 @@ import com.example.agent.exception.UnsupportedDocumentTypeException;
 import com.example.agent.mapper.DocumentMapper;
 import com.example.agent.rag.ChunkRecord;
 import com.example.agent.rag.DocumentChunker;
+import com.example.agent.rag.SparseEmbedding;
+import com.example.agent.rag.SparseEmbeddingModel;
 import com.example.agent.rag.VectorStore;
 import com.example.agent.service.KnowledgeService;
 import dev.langchain4j.data.document.Metadata;
@@ -37,6 +39,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
 
     private final DocumentChunker documentChunker;
     private final EmbeddingModel embeddingModel;
+    private final SparseEmbeddingModel sparseEmbeddingModel;
     private final VectorStore vectorStore;
     private final RagProperties ragProperties;
     private final DocumentMapper documentMapper;
@@ -79,11 +82,16 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         List<Embedding> embeddings = embeddingModel.embedAll(segments).content();
 
         for (int i = 0; i < segments.size(); i++) {
+            String chunkText = segments.get(i).text();
+            SparseEmbedding sparse = sparseEmbeddingModel.embed(chunkText);
             vectorStore.add(new ChunkRecord(
                     UUID.randomUUID().toString(),
                     documentId,
-                    segments.get(i).text(),
-                    embeddings.get(i).vector()));
+                    chunkText,
+                    fileName,
+                    i,
+                    embeddings.get(i).vector(),
+                    sparse));
         }
 
         // 持久化文档元数据到 MySQL

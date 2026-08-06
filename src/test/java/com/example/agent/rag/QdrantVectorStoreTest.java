@@ -44,7 +44,7 @@ class QdrantVectorStoreTest {
     @Test
     void addAndSearchFindsInsertedChunk() {
         String documentId = UUID.randomUUID().toString();
-        store.add(new ChunkRecord(UUID.randomUUID().toString(), documentId, "Spring Boot 配置 Qdrant", unitVector(0)));
+        store.add(new ChunkRecord(UUID.randomUUID().toString(), documentId, "Spring Boot 配置 Qdrant", "spring.md", 0, unitVector(0), SparseEmbedding.empty()));
 
         List<VectorMatch> matches = store.search(unitVector(0), 5, 0.0);
 
@@ -57,8 +57,8 @@ class QdrantVectorStoreTest {
     @Test
     void deleteByDocumentIdRemovesAllChunks() {
         String documentId = UUID.randomUUID().toString();
-        store.add(new ChunkRecord(UUID.randomUUID().toString(), documentId, "文本 A", unitVector(1)));
-        store.add(new ChunkRecord(UUID.randomUUID().toString(), documentId, "文本 B", unitVector(1)));
+        store.add(new ChunkRecord(UUID.randomUUID().toString(), documentId, "文本 A", "a.txt", 0, unitVector(1), SparseEmbedding.empty()));
+        store.add(new ChunkRecord(UUID.randomUUID().toString(), documentId, "文本 B", "b.txt", 1, unitVector(1), SparseEmbedding.empty()));
 
         store.deleteByDocumentId(documentId);
 
@@ -70,7 +70,7 @@ class QdrantVectorStoreTest {
     void searchRespectsTopKLimit() {
         String documentId = UUID.randomUUID().toString();
         for (int i = 0; i < 5; i++) {
-            store.add(new ChunkRecord(UUID.randomUUID().toString(), documentId, "文本 " + i, unitVector(0)));
+            store.add(new ChunkRecord(UUID.randomUUID().toString(), documentId, "文本 " + i, "f.txt", i, unitVector(0), SparseEmbedding.empty()));
         }
 
         List<VectorMatch> matches = store.search(unitVector(0), 2, 0.0);

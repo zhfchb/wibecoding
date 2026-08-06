@@ -29,3 +29,37 @@ CREATE TABLE IF NOT EXISTS sys_user (
     deleted    INT          NOT NULL DEFAULT 0
 );
 
+-- M9 多 Agent 协作工作流持久化表（checkpoint + 任务表）
+-- 进程重启后可从 MySQL 恢复正在审核中的任务
+-- 注意：用 TEXT/TIMESTAMP 保持 H2 测试环境兼容
+
+-- LangGraph4j checkpoint 持久化表
+CREATE TABLE IF NOT EXISTS langgraph_checkpoint (
+    id            BIGINT AUTO_INCREMENT PRIMARY KEY,
+    thread_id     VARCHAR(64) NOT NULL,
+    checkpoint_id VARCHAR(64) NOT NULL,
+    node_id       VARCHAR(64),
+    next_node_id  VARCHAR(64),
+    state_json    TEXT NOT NULL,
+    created_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_langgraph_thread_id ON langgraph_checkpoint(thread_id);
+
+-- 多 Agent 任务表
+CREATE TABLE IF NOT EXISTS multi_agent_task (
+    id              BIGINT AUTO_INCREMENT PRIMARY KEY,
+    task_id         VARCHAR(64) NOT NULL,
+    thread_id       VARCHAR(64) NOT NULL,
+    question        TEXT NOT NULL,
+    status          VARCHAR(32) NOT NULL,
+    draft           TEXT,
+    final_answer    TEXT,
+    sources_json    TEXT,
+    reject_count    INT NOT NULL DEFAULT 0,
+    review_feedback TEXT,
+    created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_mat_task_id ON multi_agent_task(task_id);
+CREATE INDEX IF NOT EXISTS idx_mat_status ON multi_agent_task(status);
+CREATE INDEX IF NOT EXISTS idx_mat_thread_id ON multi_agent_task(thread_id);

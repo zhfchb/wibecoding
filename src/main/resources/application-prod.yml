@@ -31,12 +31,30 @@ rag:
     type: ${RAG_VECTOR_STORE_TYPE:qdrant}
     qdrant-url: ${QDRANT_URL:http://qdrant:6333}
     collection-name: knowledge
+  hybrid:
+    enabled: ${RAG_HYBRID_ENABLED:true}
+    recall-top-k: ${RAG_HYBRID_RECALL_TOP_K:20}
+    rrf-k: ${RAG_HYBRID_RRF_K:60}
+  rerank:
+    enabled: ${RAG_RERANK_ENABLED:true}
+    provider: ${RAG_RERANK_PROVIDER:siliconflow}
+    base-url: ${RAG_RERANK_BASE_URL:https://api.siliconflow.cn/v1}
+    api-key: ${RAG_RERANK_API_KEY:${RAG_EMBEDDING_API_KEY:}}
+    model-name: ${RAG_RERANK_MODEL:BAAI/bge-reranker-v2-m3}
+    top-k: ${RAG_RERANK_TOP_K:3}
   upload:
     max-file-size-bytes: ${RAG_UPLOAD_MAX_BYTES:2097152}
     allowed-extensions:
       - txt
       - md
       - markdown
+  adaptive:
+    enabled: ${RAG_ADAPTIVE_ENABLED:true}
+    max-retries: ${RAG_ADAPTIVE_MAX_RETRIES:1}
+    min-score: ${RAG_ADAPTIVE_MIN_SCORE:0.35}
+  multi-agent:
+    enabled: ${RAG_MULTI_AGENT_ENABLED:true}
+    max-rejects: ${RAG_MULTI_AGENT_MAX_REJECTS:2}
 
 chat:
   session:

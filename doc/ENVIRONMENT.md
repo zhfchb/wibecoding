@@ -7,14 +7,14 @@
 
 | 服务 | 来源 | 容器名/进程 | 端口 | 用途 | 状态 |
 | --- | --- | --- | --- | --- | --- |
-| Qdrant | `docker compose` | wibecoding-qdrant | 6333(HTTP)/6334(gRPC) | 向量数据库，RAG 检索 | ✅ 已用 |
+| Qdrant | `docker compose` | wibecoding-qdrant | 6333(HTTP)/6334(gRPC) | 向量数据库，稠密+稀疏混合检索 | ✅ 已用 |
 | MySQL | **本地宝塔管理** | mysqld.exe(系统服务) | 3306 | 文档元数据 + 对话历史 | ✅ 已用 |
 | Redis | `docker compose` | wibecoding-redis | 6379 | 多轮会话上下文 + TTL 过期 | ✅ 已用 |
-| App | （待 Dockerfile） | wibecoding-app | 8080 | Spring Boot 应用本体 | 🔲 规划（M6） |
-| Elasticsearch | （待定） | wibecoding-es | 9200 | BM25 混合检索（候选） | 🔲 规划（M7） |
+| App | Dockerfile | wibecoding-app | 8080 | Spring Boot 应用本体 | ✅ 已用 |
+| 硅基流动 Rerank | 外部 API | - | 443 | BGE-Reranker-v2-M3 精排（可选） | ✅ 已用 |
 
 > 说明 1：MySQL 使用本机宝塔管理的 MySQL 8.0,安装目录 `E:\software\BtSoft\mysql\MySQL8.0`,版本 8.0.29。`docker-compose.yml` 保留 MySQL 服务定义(已注释)作为备选,如需切回 Docker MySQL,先停本地 MySQL 服务再取消注释。
-> 说明 2：M7 的混合检索方案未定，可能用 Elasticsearch 做 BM25，也可能直接用 MySQL 全文索引或 Qdrant 的稀疏向量。确定后再补镜像与配置。
+> 说明 2：M7 混合检索方案已确定 —— 不引入 Elasticsearch，改用 **Qdrant 原生 sparse vectors + `/points/query` 的 RRF 融合**；稀疏向量由客户端 `HashingSparseModel`（TF-IDF 风格）生成，dev/prod 一致，无需额外服务。Rerank 走硅基流动 `/rerank`（BGE-Reranker-v2-M3），无独立 Key 时自动降级为 Noop。
 
 ## 2. 快速启动
 
@@ -71,6 +71,11 @@ docker compose up -d redis
 - `rag.vector-store.type=qdrant`
 - `rag.vector-store.qdrant-url=http://localhost:6333`
 - `rag.vector-store.collection-name=knowledge`
+- `rag.hybrid.enabled=true` / `rag.hybrid.recall-top-k=20` / `rag.hybrid.rrf-k=60`：混合检索（dense+sparse+RRF）
+- `rag.rerank.enabled` / `rag.rerank.provider=siliconflow` / `rag.rerank.model-name=BAAI/bge-reranker-v2-m3`：Rerank 精排
+
+> ⚠️ **M7 schema 变更**：集合由「默认未命名向量」改为命名向量 `dense`(Cosine) + `sparse`(sparse_vectors)。升级到 M7 后，旧 `knowledge` 集合不兼容，需删除重建：
+> `Invoke-RestMethod -Method Delete -Uri "http://localhost:6333/collections/knowledge"`，之后首次上传文档会按新 schema 自动创建。
 
 ### 3.2 MySQL 8.0(本地宝塔管理)
 
@@ -231,7 +236,6 @@ docker compose -f docker-compose.prod.yml down -v        # 停服务 + 删数据
 | 6334 | Qdrant gRPC | |
 | 6379 | Redis | |
 | 8080 | Spring Boot 应用 | |
-| 9200 | Elasticsearch（规划） | M7 混合检索候选 |
 | 9999 | （测试 dummy） | application-test.yml 中 DeepSeek base-url 占位 |
 
 ## 7. 凭据速查
@@ -248,12 +252,12 @@ docker compose -f docker-compose.prod.yml down -v        # 停服务 + 删数据
 | 应用默认账号-user | user | user123(USER 角色) |
 | DeepSeek API | - | 见 `application-dev.yml` |
 | 硅基流动 Embedding | - | 见 `application-dev.yml` |
+| 硅基流动 Rerank | - | 默认复用 Embedding Key；`RAG_RERANK_API_KEY` 可独立配置 |
 | JWT 签名密钥 | - | `jwt.secret`(application.yml,生产用 `JWT_SECRET` 覆盖) |
 
 ## 8. 后续规划
 
 | 里程碑 | 涉及环境 | 说明 |
 | --- | --- | --- |
-| M6 工程化 | App Dockerfile + 全栈 docker-compose | 应用容器化，加入 docker-compose |
-| M7 RAG 优化 | Elasticsearch（候选） | BM25 混合检索；方案未定，可能改用 MySQL 全文索引或 Qdrant 稀疏向量 |
+| M7 RAG 优化 | Qdrant sparse + 硅基流动 Rerank | 已完成：Qdrant 原生混合检索（RRF）+ BGE-Reranker 精排，不引入 ES |
 | M8 LangGraph4j | 复用 MySQL 或加 PostgreSQL | Checkpoint 持久化；倾向复用 MySQL 减少服务数量 |

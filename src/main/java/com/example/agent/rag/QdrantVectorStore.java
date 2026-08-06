@@ -6,10 +6,14 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 public class QdrantVectorStore implements VectorStore {
+
+    private static final String DENSE_NAME = "dense";
+    private static final String SPARSE_NAME = "sparse";
 
     private final String collectionName;
     private final int dimension;
@@ -24,12 +28,25 @@ public class QdrantVectorStore implements VectorStore {
     @Override
     public synchronized void add(ChunkRecord chunk) {
         ensureCollection();
+
+        Map<String, Object> vector = new LinkedHashMap<>();
+        vector.put(DENSE_NAME, toList(chunk.vector()));
+        if (chunk.sparseVector() != null && !chunk.sparseVector().isEmpty()) {
+            vector.put(SPARSE_NAME, Map.of(
+                    "indices", toIntList(chunk.sparseVector().indices()),
+                    "values", toFloatList(chunk.sparseVector().values())));
+        }
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("text", chunk.text());
+        payload.put("document_id", chunk.documentId());
+        payload.put("file_name", chunk.fileName());
+        payload.put("chunk_index", chunk.chunkIndex());
+
         Map<String, Object> point = Map.of(
                 "id", chunk.id(),
-                "vector", toList(chunk.vector()),
-                "payload", Map.of(
-                        "text", chunk.text(),
-                        "document_id", chunk.documentId()));
+                "vector", vector,
+                "payload", payload);
         Map<String, Object> body = Map.of("points", List.of(point));
 
         restClient.put()
@@ -42,36 +59,54 @@ public class QdrantVectorStore implements VectorStore {
 
     @Override
     public synchronized List<VectorMatch> search(float[] queryVector, int topK, double minScore) {
+        return search(queryVector, null, topK, minScore, 0);
+    }
+
+    @Override
+    public synchronized List<VectorMatch> search(float[] denseVector,
+                                                 SparseEmbedding sparseVector,
+                                                 int topK,
+                                                 double minScore,
+                                                 int rrfK) {
         ensureCollection();
-        Map<String, Object> body = Map.of(
-                "vector", toList(queryVector),
-                "limit", topK,
-                "score_threshold", minScore,
-                "with_payload", true);
+
+        Map<String, Object> body;
+        if (sparseVector == null || sparseVector.isEmpty()) {
+            // 纯稠密检索：/points/query 直接 query
+            body = Map.of(
+                    "query", toList(denseVector),
+                    "using", DENSE_NAME,
+                    "limit", topK,
+                    "score_threshold", minScore,
+                    "with_payload", true);
+        } else {
+            // 混合检索：dense + sparse 两路 prefetch，RRF 融合
+            Map<String, Object> densePrefetch = Map.of(
+                    "query", toList(denseVector),
+                    "using", DENSE_NAME,
+                    "limit", topK,
+                    "score_threshold", minScore);
+            Map<String, Object> sparsePrefetch = Map.of(
+                    "query", Map.of(SPARSE_NAME, Map.of(
+                            "indices", toIntList(sparseVector.indices()),
+                            "values", toFloatList(sparseVector.values()))),
+                    "using", SPARSE_NAME,
+                    "limit", topK);
+            body = Map.of(
+                    "prefetch", List.of(densePrefetch, sparsePrefetch),
+                    "fusion", Map.of("rrf", Map.of("k", rrfK)),
+                    "limit", topK,
+                    "with_payload", true);
+        }
 
         JsonNode root = restClient.post()
-                .uri("/collections/{collection}/points/search", collectionName)
+                .uri("/collections/{collection}/points/query", collectionName)
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(body)
                 .retrieve()
                 .body(JsonNode.class);
 
-        List<VectorMatch> matches = new ArrayList<>();
-        if (root != null && root.has("result")) {
-            for (JsonNode node : root.path("result")) {
-                JsonNode payload = node.path("payload");
-                matches.add(new VectorMatch(
-                        node.path("id").asText(),
-                        payload.path("document_id").asText(),
-                        payload.path("text").asText(),
-                        node.path("score").asDouble()));
-            }
-        }
-        return matches.stream()
-                .filter(match -> match.score() >= minScore)
-                .sorted((left, right) -> Double.compare(right.score(), left.score()))
-                .limit(topK)
-                .toList();
+        return parseQueryResult(root, minScore, topK);
     }
 
     @Override
@@ -88,10 +123,12 @@ public class QdrantVectorStore implements VectorStore {
     }
 
     private void ensureCollection() {
+        // 命名稠密向量 dense + 稀疏向量 sparse，支持原生混合检索
         Map<String, Object> body = Map.of(
-                "vectors", Map.of(
+                "vectors", Map.of(DENSE_NAME, Map.of(
                         "size", dimension,
-                        "distance", "Cosine"));
+                        "distance", "Cosine")),
+                "sparse_vectors", Map.of(SPARSE_NAME, Map.of()));
         try {
             restClient.put()
                     .uri("/collections/{collection}", collectionName)
@@ -106,7 +143,47 @@ public class QdrantVectorStore implements VectorStore {
         }
     }
 
+    private List<VectorMatch> parseQueryResult(JsonNode root, double minScore, int topK) {
+        List<VectorMatch> matches = new ArrayList<>();
+        if (root != null && root.has("result")) {
+            JsonNode result = root.path("result");
+            // /points/query 的结果是 { points: [...] }；兼容旧 /points/search 的数组结果
+            JsonNode points = result.isArray() ? result : result.path("points");
+            for (JsonNode node : points) {
+                JsonNode payload = node.path("payload");
+                matches.add(new VectorMatch(
+                        node.path("id").asText(),
+                        payload.path("document_id").asText(),
+                        payload.path("text").asText(),
+                        payload.path("file_name").asText(null),
+                        payload.path("chunk_index").asInt(0),
+                        node.path("score").asDouble()));
+            }
+        }
+        return matches.stream()
+                .filter(match -> match.score() >= minScore)
+                .sorted((left, right) -> Double.compare(right.score(), left.score()))
+                .limit(topK)
+                .toList();
+    }
+
     private List<Float> toList(float[] values) {
+        List<Float> list = new ArrayList<>(values.length);
+        for (float value : values) {
+            list.add(value);
+        }
+        return list;
+    }
+
+    private List<Integer> toIntList(int[] values) {
+        List<Integer> list = new ArrayList<>(values.length);
+        for (int value : values) {
+            list.add(value);
+        }
+        return list;
+    }
+
+    private List<Float> toFloatList(float[] values) {
         List<Float> list = new ArrayList<>(values.length);
         for (float value : values) {
             list.add(value);

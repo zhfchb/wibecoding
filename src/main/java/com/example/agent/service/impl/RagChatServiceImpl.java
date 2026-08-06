@@ -7,6 +7,9 @@ import com.example.agent.domain.chat.RagSource;
 import com.example.agent.domain.chat.SessionMessage;
 import com.example.agent.entity.ChatHistoryEntity;
 import com.example.agent.mapper.ChatHistoryMapper;
+import com.example.agent.rag.RerankModel;
+import com.example.agent.rag.SparseEmbedding;
+import com.example.agent.rag.SparseEmbeddingModel;
 import com.example.agent.rag.VectorMatch;
 import com.example.agent.rag.VectorStore;
 import com.example.agent.service.RagChatService;
@@ -16,12 +19,12 @@ import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
-import dev.langchain4j.model.StreamingResponseHandler;
 import dev.langchain4j.model.chat.request.ChatRequest;
+import dev.langchain4j.model.chat.response.ChatResponse;
+import dev.langchain4j.model.chat.response.StreamingChatResponseHandler;
 import dev.langchain4j.model.embedding.EmbeddingModel;
 import dev.langchain4j.model.openai.OpenAiChatModel;
 import dev.langchain4j.model.openai.OpenAiStreamingChatModel;
-import dev.langchain4j.model.output.Response;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -51,6 +54,8 @@ public class RagChatServiceImpl implements RagChatService {
     private final RagProperties ragProperties;
     private final SessionStore sessionStore;
     private final ChatHistoryMapper chatHistoryMapper;
+    private final SparseEmbeddingModel sparseEmbeddingModel;
+    private final RerankModel rerankModel;
 
     @Override
     public RagChatResponse chat(String message, String sessionId) {
@@ -75,7 +80,7 @@ public class RagChatServiceImpl implements RagChatService {
         saveHistory(session, SessionMessage.user(message), answer);
 
         List<RagSource> sources = matches.stream()
-                .map(match -> new RagSource(match.text(), match.score()))
+                .map(match -> new RagSource(match.text(), match.fileName(), match.chunkIndex(), match.score()))
                 .toList();
         return new RagChatResponse(session, answer, sources);
     }
@@ -103,11 +108,11 @@ public class RagChatServiceImpl implements RagChatService {
 
         List<ChatMessage> messages = buildMessages(session, message, matches);
 
-        // 流式输出时累积完整回答，onComplete 时保存历史
+        // 流式输出时累积完整回答，onCompleteResponse 时保存历史
         StringBuilder answerBuilder = new StringBuilder();
-        openAiStreamingChatModel.generate(messages, new StreamingResponseHandler<AiMessage>() {
+        openAiStreamingChatModel.chat(messages, new StreamingChatResponseHandler() {
             @Override
-            public void onNext(String partialResponse) {
+            public void onPartialResponse(String partialResponse) {
                 try {
                     answerBuilder.append(partialResponse);
                     emitter.send(SseEmitter.event().data(partialResponse));
@@ -117,7 +122,7 @@ public class RagChatServiceImpl implements RagChatService {
             }
 
             @Override
-            public void onComplete(Response<AiMessage> completeResponse) {
+            public void onCompleteResponse(ChatResponse completeResponse) {
                 saveHistory(session, SessionMessage.user(message), answerBuilder.toString());
                 emitter.complete();
             }
@@ -166,10 +171,31 @@ public class RagChatServiceImpl implements RagChatService {
 
     private List<VectorMatch> retrieve(String message) {
         Embedding queryEmbedding = embeddingModel.embed(message).content();
-        return vectorStore.search(
-                queryEmbedding.vector(),
-                ragProperties.retrieval().topK(),
-                ragProperties.retrieval().minScore());
+        float[] dense = queryEmbedding.vector();
+
+        RagProperties.Hybrid hybrid = ragProperties.hybrid();
+        RagProperties.Rerank rerank = ragProperties.rerank();
+        boolean hybridEnabled = hybrid != null && hybrid.enabled();
+        double minScore = ragProperties.retrieval().minScore();
+        int recallTopK = hybridEnabled
+                ? hybrid.recallTopK()
+                : ragProperties.retrieval().topK();
+        int rrfK = hybrid != null ? hybrid.rrfK() : 60;
+
+        // 阶段一：召回（混合检索 or 纯稠密）
+        List<VectorMatch> candidates = hybridEnabled
+                ? vectorStore.search(dense, sparseEmbeddingModel.embed(message), recallTopK, minScore, rrfK)
+                : vectorStore.search(dense, recallTopK, minScore);
+
+        // 阶段二：精排（rerank or 截断）
+        int finalTopK = (rerank != null && rerank.topK() > 0)
+                ? rerank.topK()
+                : ragProperties.retrieval().topK();
+        boolean rerankEnabled = rerank != null && rerank.enabled();
+        if (rerankEnabled) {
+            return rerankModel.rerank(message, candidates, finalTopK);
+        }
+        return candidates.size() <= finalTopK ? candidates : candidates.subList(0, finalTopK);
     }
 
     private String buildContext(List<VectorMatch> matches) {

@@ -2,7 +2,9 @@ package com.example.agent.rag;
 
 import dev.langchain4j.data.embedding.Embedding;
 import dev.langchain4j.model.embedding.EmbeddingModel;
+import dev.langchain4j.model.openai.OpenAiEmbeddingModel;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -14,37 +16,81 @@ import static org.assertj.core.api.Assertions.assertThat;
  * RAG 检索质量评估测试：构建小型知识库 + 评测集，计算 Recall@K 与 MRR。
  *
  * 默认用 LexicalHashEmbeddingModel 跑 baseline，验证检索链路 work；
- * 配置真实 Embedding（rag.embedding.provider=openai）后可手动切换 model 字段对比效果。
+ * 设置环境变量 RAG_EMBEDDING_API_KEY + RAG_EMBEDDING_BASE_URL 后，
+ * {@link #evaluateRealEmbeddingQuality()} 会用真实 BGE-M3 跑评测并输出对比报告。
  *
- * 简历素材：这里跑出的 Recall@3 数值可以直接写进简历作为效果指标。
+ * 简历素材：真实 Embedding 跑出的 Recall@3 数值可直接写进简历作为效果指标。
  */
 class RagEvaluationTest {
 
     private static final int TOP_K = 3;
     private static final int DIMENSION = 1024;
 
+    /** baseline：hash embedding，always run，验证检索链路与回归。 */
     @Test
-    void evaluateRetrievalQuality() {
+    void evaluateBaselineQuality() {
         EmbeddingModel model = new LexicalHashEmbeddingModel(DIMENSION);
-        InMemoryVectorStore store = new InMemoryVectorStore();
+        EvalResult result = runEvaluation(model, "LexicalHashEmbeddingModel");
+        System.out.println(result.report());
 
-        // 1. 构建知识库：5 篇技术文档，每篇有明确主题
+        // hash embedding 在关键词重合场景下应能命中大部分，baseline 设 60%
+        assertThat(result.recall()).as("Recall@%d baseline", TOP_K).isGreaterThanOrEqualTo(0.6);
+    }
+
+    /** 真实 Embedding（BGE-M3 via 硅基流动），需要环境变量门控，无 key 自动跳过。 */
+    @Test
+    @EnabledIfEnvironmentVariable(named = "RAG_EMBEDDING_API_KEY", matches = ".+")
+    void evaluateRealEmbeddingQuality() {
+        String baseUrl = System.getenv().getOrDefault("RAG_EMBEDDING_BASE_URL", "https://api.siliconflow.cn/v1");
+        String modelName = System.getenv().getOrDefault("RAG_EMBEDDING_MODEL", "BAAI/bge-m3");
+        String apiKey = System.getenv("RAG_EMBEDDING_API_KEY");
+
+        EmbeddingModel real = OpenAiEmbeddingModel.builder()
+                .baseUrl(baseUrl)
+                .apiKey(apiKey)
+                .modelName(modelName)
+                .build();
+
+        EvalResult realResult = runEvaluation(real, "BGE-M3 (real)");
+        EvalResult baselineResult = runEvaluation(new LexicalHashEmbeddingModel(DIMENSION), "LexicalHash (baseline)");
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("\n======= RAG 检索质量对比 (baseline vs real) =======\n");
+        sb.append(baselineResult.report()).append("\n");
+        sb.append(realResult.report()).append("\n");
+        sb.append("-----------------------------------\n");
+        sb.append(String.format("Recall@%d 提升: %.2f%% -> %.2f%% (+%.2f%%)%n",
+                TOP_K, baselineResult.recall() * 100, realResult.recall() * 100,
+                (realResult.recall() - baselineResult.recall()) * 100));
+        sb.append(String.format("MRR 提升: %.4f -> %.4f%n",
+                baselineResult.mrr(), realResult.mrr()));
+        sb.append("===================================================\n");
+        System.out.println(sb);
+
+        // 真实 Embedding 应至少不差于 baseline（通常更好）
+        assertThat(realResult.recall()).as("real Recall@%d vs baseline", TOP_K)
+                .isGreaterThanOrEqualTo(baselineResult.recall());
+    }
+
+    /**
+     * 跑一次完整评测：构建语料 → 跑检索 → 统计 Recall@K 与 MRR，返回结果与报告。
+     */
+    private EvalResult runEvaluation(EmbeddingModel model, String label) {
+        InMemoryVectorStore store = new InMemoryVectorStore();
         List<EvalDoc> docs = buildCorpus();
         for (EvalDoc doc : docs) {
             Embedding emb = model.embed(doc.text()).content();
-            store.add(new ChunkRecord(UUID.randomUUID().toString(), doc.id(), doc.text(), emb.vector()));
+            store.add(new ChunkRecord(UUID.randomUUID().toString(), doc.id(), doc.text(), doc.title(), 0,
+                    emb.vector(), SparseEmbedding.empty()));
         }
 
-        // 2. 评测集：5 个自然语言查询 + 期望命中的文档 ID
         List<EvalQuery> queries = buildQueries();
-
-        // 3. 跑检索，统计 Recall@K 与 MRR
         int hits = 0;
         double mrr = 0;
         List<String> report = new ArrayList<>();
         report.add("======= RAG 检索质量评估 =======");
         report.add(String.format("Embedding: %s | 维度: %d | TopK: %d | 文档数: %d | 查询数: %d",
-                model.getClass().getSimpleName(), DIMENSION, TOP_K, docs.size(), queries.size()));
+                label, DIMENSION, TOP_K, docs.size(), queries.size()));
         report.add("-----------------------------------");
 
         for (EvalQuery query : queries) {
@@ -86,11 +132,7 @@ class RagEvaluationTest {
         report.add(String.format("MRR: %.4f", mrr));
         report.add("===================================");
 
-        String fullReport = String.join("\n", report);
-        System.out.println(fullReport);
-
-        // hash embedding 在关键词重合场景下应能命中大部分，baseline 设 60%
-        assertThat(recall).as("Recall@%d baseline", TOP_K).isGreaterThanOrEqualTo(0.6);
+        return new EvalResult(recall, mrr, String.join("\n", report));
     }
 
     private List<EvalDoc> buildCorpus() {
@@ -127,5 +169,8 @@ class RagEvaluationTest {
     }
 
     private record EvalQuery(String question, String expectedDocId) {
+    }
+
+    private record EvalResult(double recall, double mrr, String report) {
     }
 }
