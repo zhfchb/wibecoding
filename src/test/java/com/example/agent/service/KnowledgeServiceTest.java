@@ -78,6 +78,7 @@ class KnowledgeServiceTest {
                 new RagProperties.Hybrid(false, 20, 60),
                 new RagProperties.Rerank(false, "noop", "", "", "", 0),
                 new RagProperties.Adaptive(false, 1, 0.35),
-                new RagProperties.MultiAgent(false, 2));
+                new RagProperties.MultiAgent(false, 2),
+                new RagProperties.WebSearch(false, "tavily", "", 5, 0.35));
     }
 }

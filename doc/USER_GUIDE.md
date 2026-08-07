@@ -13,8 +13,8 @@
 | Maven | 3.8+ | 后端构建工具 |
 | Node.js | 18+ | 前端运行环境（本机路径 `E:\software\nodejs`） |
 | MySQL | 8.0+ | 数据存储（用户、文档元数据、多 Agent 任务、checkpoint） |
-| Redis | 6.0+ | 会话存储（可选，测试环境可用内存替代） |
-| Qdrant | 1.0+ | 向量数据库（存储文档 embedding） |
+| Redis | 6.0+ | 会话存储（Docker 容器，可选，测试环境可用内存替代） |
+| Qdrant | 1.0+ | 向量数据库（Docker 容器，存储文档 embedding） |
 
 ---
 
@@ -37,10 +37,19 @@ Get-Content src\main\resources\schema.sql -Raw | & "E:\software\BtSoft\mysql\MyS
 # 参见 scripts/init-local-mysql.sql
 ```
 
-### 2.2 Redis
+### 2.2 Redis（Docker）
 
 ```powershell
-# 宝塔管理的 Redis 默认端口 6379，通常已自启
+# 启动 Redis 容器（首次）：镜像 redis:7-alpine，端口 6379，持久化数据到 wibecoding_redis_data 卷
+docker run -d --name wibecoding-redis `
+  -p 6379:6379 `
+  -v wibecoding_redis_data:/data `
+  --restart unless-stopped `
+  redis:7-alpine
+
+# 后续启动（容器已创建过）：
+docker start wibecoding-redis
+
 # 检查：
 Test-NetConnection -ComputerName localhost -Port 6379
 ```
@@ -48,12 +57,21 @@ Test-NetConnection -ComputerName localhost -Port 6379
 ### 2.3 Qdrant（Docker）
 
 ```powershell
-# 已在 docker-compose.yml 中定义，启动：
-docker compose up -d qdrant
+# 启动 Qdrant 容器（首次）：向量数据库，端口 6333/6334，持久化数据到 wibecoding_qdrant_storage 卷
+docker run -d --name wibecoding-qdrant `
+  -p 6333:6333 -p 6334:6334 `
+  -v wibecoding_qdrant_storage:/qdrant/storage `
+  --restart unless-stopped `
+  qdrant/qdrant:latest
+
+# 后续启动（容器已创建过）：
+docker start wibecoding-qdrant
 
 # 检查（端口 6333）：
 Test-NetConnection -ComputerName localhost -Port 6333
 ```
+
+> 两个容器都配置了 `--restart unless-stopped`，Docker 服务启动后会自动拉起，无需手动启动。
 
 ---
 

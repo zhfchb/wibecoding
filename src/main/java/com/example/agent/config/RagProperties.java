@@ -14,7 +14,8 @@ public record RagProperties(
         Hybrid hybrid,
         Rerank rerank,
         Adaptive adaptive,
-        MultiAgent multiAgent) {
+        MultiAgent multiAgent,
+        WebSearch webSearch) {
 
     public record Chunking(int maxChars, int overlapChars) {
     }
@@ -71,5 +72,17 @@ public record RagProperties(
      * @param maxRejects  最多被拒绝次数，超过后强制通过（避免无限循环），默认 2
      */
     public record MultiAgent(boolean enabled, int maxRejects) {
+    }
+
+    /**
+     * Web 搜索配置：当知识库无相关内容时，Agent 调用外部搜索 API 获取实时信息。
+     *
+     * @param enabled           是否启用 Web 搜索兜底
+     * @param provider          搜索服务提供商（当前支持 tavily）
+     * @param apiKey            搜索 API Key
+     * @param maxResults        每次搜索返回的最大结果数
+     * @param fallbackMinScore  检索 top1 分数低于此值时，视为知识库内容不相关，允许走 Web 搜索兜底（0 表示仅在 matches 为空时触发）
+     */
+    public record WebSearch(boolean enabled, String provider, String apiKey, int maxResults, double fallbackMinScore) {
     }
 }

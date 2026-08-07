@@ -45,20 +45,22 @@ class RagChatServiceTest {
         VectorStore vectorStore = mock(VectorStore.class);
         SessionStore sessionStore = mock(SessionStore.class);
         ChatHistoryMapper chatHistoryMapper = mock(ChatHistoryMapper.class);
+        AgentService agentService = mock(AgentService.class);
         RagChatServiceImpl service = new RagChatServiceImpl(
                 chatModel, streamingModel, embeddingModel, vectorStore, properties(),
-                sessionStore, chatHistoryMapper, new HashingSparseModel(), new NoopRerankModel());
+                sessionStore, chatHistoryMapper, new HashingSparseModel(), new NoopRerankModel(), agentService);
 
         when(embeddingModel.embed(anyString())).thenReturn(Response.from(Embedding.from(new float[768])));
         when(vectorStore.search(any(), anyInt(), anyDouble(), any())).thenReturn(List.of());
         when(sessionStore.load(anyString())).thenReturn(List.of());
+        when(chatModel.chat(any(ChatRequest.class)))
+                .thenReturn(ChatResponse.builder().aiMessage(AiMessage.from("你好，我是智能知识库助手")).build());
 
         RagChatResponse response = service.chat("未收录的问题", null);
 
-        assertThat(response.answer()).contains("没有检索到");
+        assertThat(response.answer()).contains("智能知识库助手");
         assertThat(response.sources()).isEmpty();
         assertThat(response.sessionId()).isNotBlank();
-        verify(chatModel, never()).chat(any(ChatRequest.class));
     }
 
     @Test
@@ -69,9 +71,10 @@ class RagChatServiceTest {
         VectorStore vectorStore = mock(VectorStore.class);
         SessionStore sessionStore = mock(SessionStore.class);
         ChatHistoryMapper chatHistoryMapper = mock(ChatHistoryMapper.class);
+        AgentService agentService = mock(AgentService.class);
         RagChatServiceImpl service = new RagChatServiceImpl(
                 chatModel, streamingModel, embeddingModel, vectorStore, properties(),
-                sessionStore, chatHistoryMapper, new HashingSparseModel(), new NoopRerankModel());
+                sessionStore, chatHistoryMapper, new HashingSparseModel(), new NoopRerankModel(), agentService);
 
         when(embeddingModel.embed(anyString())).thenReturn(Response.from(Embedding.from(new float[768])));
         when(vectorStore.search(any(), anyInt(), anyDouble(), any()))
@@ -87,9 +90,7 @@ class RagChatServiceTest {
         assertThat(response.sources()).hasSize(1);
         assertThat(response.sources().get(0).score()).isEqualTo(0.91);
         verify(chatModel).chat(any(ChatRequest.class));
-        // 验证会话上下文保存（user + assistant 两次）
         verify(sessionStore, times(2)).append(eq("session-1"), any());
-        // 验证对话历史持久化（user + assistant 两条）
         verify(chatHistoryMapper, times(2)).insert(any(ChatHistoryEntity.class));
     }
 
@@ -102,17 +103,16 @@ class RagChatServiceTest {
         SessionStore sessionStore = mock(SessionStore.class);
         ChatHistoryMapper chatHistoryMapper = mock(ChatHistoryMapper.class);
         RerankModel rerankModel = mock(RerankModel.class);
+        AgentService agentService = mock(AgentService.class);
         RagChatServiceImpl service = new RagChatServiceImpl(
                 chatModel, streamingModel, embeddingModel, vectorStore, hybridRerankProperties(),
-                sessionStore, chatHistoryMapper, new HashingSparseModel(), rerankModel);
+                sessionStore, chatHistoryMapper, new HashingSparseModel(), rerankModel, agentService);
 
         when(embeddingModel.embed(anyString())).thenReturn(Response.from(Embedding.from(new float[768])));
-        // 召回阶段：6-arg 混合检索返回 2 个候选
         when(vectorStore.search(any(), any(), anyInt(), anyDouble(), anyInt(), any()))
                 .thenReturn(List.of(
                         new VectorMatch("a", "doc", "候选 A", "a.txt", 0, 0.5),
                         new VectorMatch("b", "doc", "候选 B", "b.txt", 1, 0.4)));
-        // 精排阶段：rerank 仅保留 1 个最优
         when(rerankModel.rerank(anyString(), anyList(), anyInt()))
                 .thenReturn(List.of(new VectorMatch("b", "doc", "候选 B", "b.txt", 1, 0.95)));
         when(chatModel.chat(any(ChatRequest.class)))
@@ -121,11 +121,8 @@ class RagChatServiceTest {
 
         RagChatResponse response = service.chat("问题", "session-2");
 
-        // 验证走了混合检索 6-arg 路径（而非 4-arg 稠密路径）
         verify(vectorStore).search(any(), any(), anyInt(), anyDouble(), anyInt(), any());
-        // 验证 rerank 被调用
         verify(rerankModel).rerank(anyString(), anyList(), anyInt());
-        // sources 应为精排后的 1 条，且分数被替换为 rerank 分
         assertThat(response.sources()).hasSize(1);
         assertThat(response.sources().get(0).text()).isEqualTo("候选 B");
         assertThat(response.sources().get(0).score()).isEqualTo(0.95);
@@ -141,7 +138,8 @@ class RagChatServiceTest {
                 new RagProperties.Hybrid(false, 20, 60),
                 new RagProperties.Rerank(false, "noop", "", "", "", 0),
                 new RagProperties.Adaptive(false, 1, 0.35),
-                new RagProperties.MultiAgent(false, 2));
+                new RagProperties.MultiAgent(false, 2),
+                new RagProperties.WebSearch(false, "tavily", "", 5, 0.35));
     }
 
     private RagProperties hybridRerankProperties() {
@@ -154,6 +152,7 @@ class RagChatServiceTest {
                 new RagProperties.Hybrid(true, 20, 60),
                 new RagProperties.Rerank(true, "noop", "", "", "", 1),
                 new RagProperties.Adaptive(false, 1, 0.35),
-                new RagProperties.MultiAgent(false, 2));
+                new RagProperties.MultiAgent(false, 2),
+                new RagProperties.WebSearch(false, "tavily", "", 5, 0.35));
     }
 }

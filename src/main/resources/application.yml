@@ -84,6 +84,13 @@ rag:
   multi-agent:
     enabled: true       # 开关；关闭时 POST /api/v1/agent/multi-agent 返回 501
     max-rejects: 2      # 最多被拒绝次数，超过后强制通过（避免无限循环）
+  # Web 搜索兜底：知识库无结果时 Agent 自动调用外部搜索 API
+  web-search:
+    enabled: false      # 需要 api-key；无 key 时自动降级为 LLM 裸回答
+    provider: tavily    # 当前支持 tavily
+    api-key: ""         # 在 application-dev.yml 覆盖；Tavily 注册 https://tavily.com
+    max-results: 5      # 每次搜索返回几条结果
+    fallback-min-score: 0.35  # 检索 top1 分数低于此值时走搜索兜底；0 表示仅在 matches 为空时触发
 
 # springdoc / Swagger UI 配置
 springdoc:

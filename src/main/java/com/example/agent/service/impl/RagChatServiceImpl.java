@@ -13,6 +13,7 @@ import com.example.agent.rag.SparseEmbeddingModel;
 import com.example.agent.rag.VectorMatch;
 import com.example.agent.rag.VectorStore;
 import com.example.agent.security.SecurityUtils;
+import com.example.agent.service.AgentService;
 import com.example.agent.service.RagChatService;
 import com.example.agent.service.SessionStore;
 import dev.langchain4j.data.embedding.Embedding;
@@ -74,6 +75,7 @@ public class RagChatServiceImpl implements RagChatService {
     private final ChatHistoryMapper chatHistoryMapper;
     private final SparseEmbeddingModel sparseEmbeddingModel;
     private final RerankModel rerankModel;
+    private final AgentService agentService;
 
     @Override
     public RagChatResponse chat(String message, String sessionId) {
@@ -84,10 +86,18 @@ public class RagChatServiceImpl implements RagChatService {
         String session = resolveSession(sessionId);
         List<VectorMatch> matches = retrieve(message, SecurityUtils.getCurrentUserId());
 
-        // 即使无检索结果也调 LLM，让 LLM 能正常闲聊（不带知识库上下文）
-        List<ChatMessage> messages = buildMessages(session, message, matches);
-        ChatRequest request = ChatRequest.builder().messages(messages).build();
-        String answer = openAiChatModel.chat(request).aiMessage().text();
+        String answer;
+        boolean useWebSearchFallback = shouldFallbackToWebSearch(message, matches);
+        if (useWebSearchFallback && isWebSearchEnabled()) {
+            log.info("RAG 检索不足（top1Score={}, matches={}），走 Agent + Web 搜索兜底: sessionId={}",
+                    maxScore(matches), matches.size(), session);
+            answer = agentService.chat(message);
+        } else {
+            // 常规路径：有检索结果用知识库上下文，无结果用 LLM 裸回答
+            List<ChatMessage> messages = buildMessages(session, message, matches);
+            ChatRequest request = ChatRequest.builder().messages(messages).build();
+            answer = openAiChatModel.chat(request).aiMessage().text();
+        }
 
         // 保存多轮会话上下文 + 持久化对话历史
         saveHistory(session, SessionMessage.user(message), answer);
@@ -108,10 +118,33 @@ public class RagChatServiceImpl implements RagChatService {
         SseEmitter emitter = new SseEmitter(120_000L);
         List<VectorMatch> matches = retrieve(message, SecurityUtils.getCurrentUserId());
 
-        // 即使无检索结果也调 LLM，让 LLM 能正常闲聊（不带知识库上下文）
+        boolean useWebSearchFallback = shouldFallbackToWebSearch(message, matches);
+        if (useWebSearchFallback && isWebSearchEnabled()) {
+            log.info("RAG 检索不足（top1Score={}, matches={}），流式走 Agent + Web 搜索兜底: sessionId={}",
+                    maxScore(matches), matches.size(), session);
+            new Thread(() -> {
+                try {
+                    String answer = agentService.chat(message);
+                    // 按完整 Unicode 代码点推送，避免 emoji（surrogate pair）被拆成乱码
+                    int cp;
+                    for (int i = 0; i < answer.length(); ) {
+                        cp = answer.codePointAt(i);
+                        emitter.send(SseEmitter.event().data(new String(Character.toChars(cp))));
+                        i += Character.charCount(cp);
+                    }
+                    saveHistory(session, SessionMessage.user(message), answer);
+                    emitter.complete();
+                } catch (Exception e) {
+                    log.error("Agent 流式兜底出错", e);
+                    emitter.completeWithError(e);
+                }
+            }).start();
+            return emitter;
+        }
+
+        // 常规流式路径
         List<ChatMessage> messages = buildMessages(session, message, matches);
 
-        // 流式输出时累积完整回答，onCompleteResponse 时保存历史
         StringBuilder answerBuilder = new StringBuilder();
         openAiStreamingChatModel.chat(messages, new StreamingChatResponseHandler() {
             @Override
@@ -231,6 +264,95 @@ public class RagChatServiceImpl implements RagChatService {
             builder.append('[').append(i + 1).append("] ").append(matches.get(i).text()).append('\n');
         }
         return builder.toString();
+    }
+
+    private boolean isWebSearchEnabled() {
+        RagProperties.WebSearch ws = ragProperties.webSearch();
+        return ws != null && ws.enabled() && ws.apiKey() != null && !ws.apiKey().isEmpty();
+    }
+
+    /**
+     * 判断是否应该走 Web 搜索兜底。
+     * 条件：(1) 检索结果为空，或 top1 分数低于阈值；且 (2) 问题看起来需要外部信息
+     * （含时间/实时/搜索类关键词，或完全不像闲聊/致谢等简单问题）。
+     */
+    private boolean shouldFallbackToWebSearch(String message, List<VectorMatch> matches) {
+        if (message == null) {
+            return false;
+        }
+        double top1 = maxScore(matches);
+        double threshold = 0.0;
+        RagProperties.WebSearch ws = ragProperties.webSearch();
+        if (ws != null && ws.fallbackMinScore() > 0) {
+            threshold = ws.fallbackMinScore();
+        }
+
+        boolean retrievalInsufficient = matches.isEmpty() || (threshold > 0 && top1 < threshold);
+        if (!retrievalInsufficient) {
+            return false;
+        }
+        // 对简单闲聊/问候语不触发搜索，避免浪费调用量
+        if (looksLikeCasualChat(message)) {
+            return false;
+        }
+        return true;
+    }
+
+    private static final java.util.Set<String> SEARCH_KEYWORDS = java.util.Set.of(
+            // 实时类
+            "今天", "最新", "现在", "当前", "近期", "最近", "新闻", "消息", "报道",
+            // 天气/金融/招聘/市场
+            "天气", "气温", "降雨", "股票", "股价", "行情", "基金", "汇率", "金价", "油价",
+            "招聘", "职位", "岗位", "薪资", "面试", "找工作", "就业", "市场", "销量", "份额",
+            // 体育/赛事
+            "比赛", "比分", "赛事", "世界杯", "奥运会", "NBA", "中超", "欧冠",
+            // 旅游/出行
+            "机票", "酒店", "票价", "高铁", "航班", "列车", "地铁", "路况",
+            // 事件/活动/名人
+            "发布会", "展会", "演唱会", "上映", "发售", "上市",
+            // 编程/技术生态（可能有较新的文档）
+            "版本", "发布", "更新", "changelog"
+    );
+
+    private static final java.util.Set<String> CASUAL_KEYWORDS = java.util.Set.of(
+            "你好", "您好", "hi", "hello", "嗨", "哈喽",
+            "谢谢", "感谢", "多谢", "thanks", "thank",
+            "再见", "拜拜", "bye",
+            "好的", "好", "嗯", "哦", "ok", "okay"
+    );
+
+    private boolean looksLikeCasualChat(String message) {
+        String normalized = message.trim().toLowerCase();
+        if (normalized.length() <= 8) {
+            for (String k : CASUAL_KEYWORDS) {
+                if (normalized.contains(k)) {
+                    return true;
+                }
+            }
+        }
+        // 不含任何搜索关键词 + 很短（<=10字），视为简单对话，不触发搜索
+        if (normalized.length() <= 10) {
+            for (String k : SEARCH_KEYWORDS) {
+                if (normalized.contains(k)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        return false;
+    }
+
+    private double maxScore(List<VectorMatch> matches) {
+        if (matches == null || matches.isEmpty()) {
+            return 0.0;
+        }
+        double max = 0.0;
+        for (VectorMatch m : matches) {
+            if (m.score() > max) {
+                max = m.score();
+            }
+        }
+        return max;
     }
 
     /**
