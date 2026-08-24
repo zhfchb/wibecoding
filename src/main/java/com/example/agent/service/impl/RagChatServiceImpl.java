@@ -177,15 +177,25 @@ public class RagChatServiceImpl implements RagChatService {
         if (!StringUtils.hasText(sessionId)) {
             return List.of();
         }
+        Long userId = SecurityUtils.getCurrentUserId();
+        if (userId == null) {
+            // 无用户上下文时不返回任何历史，防止数据越权
+            return List.of();
+        }
         return chatHistoryMapper.selectList(
                 new LambdaQueryWrapper<ChatHistoryEntity>()
+                        .eq(ChatHistoryEntity::getUserId, userId)
                         .eq(ChatHistoryEntity::getSessionId, sessionId)
                         .orderByAsc(ChatHistoryEntity::getId));
     }
 
     @Override
     public List<ChatHistoryEntity> listSessions() {
-        return chatHistoryMapper.selectLatestOfEachSession();
+        Long userId = SecurityUtils.getCurrentUserId();
+        if (userId == null) {
+            return List.of();
+        }
+        return chatHistoryMapper.selectLatestOfEachSession(userId);
     }
 
     @Override
@@ -193,11 +203,12 @@ public class RagChatServiceImpl implements RagChatService {
         if (!StringUtils.hasText(sessionId)) {
             throw new IllegalArgumentException("sessionId 不能为空");
         }
-        // 1. 删除 MySQL 持久化历史
-        chatHistoryMapper.deleteBySessionId(sessionId);
+        Long userId = SecurityUtils.getCurrentUserId();
+        // 1. 删除 MySQL 持久化历史（仅自己的会话）
+        chatHistoryMapper.deleteBySessionId(sessionId, userId);
         // 2. 清除会话上下文缓存（Redis/内存）
         sessionStore.clear(sessionId);
-        log.info("会话已删除: {}", sessionId);
+        log.info("会话已删除: sessionId={}, userId={}", sessionId, userId);
     }
 
     private String resolveSession(String sessionId) {
@@ -371,6 +382,7 @@ public class RagChatServiceImpl implements RagChatService {
         try {
             ChatHistoryEntity entity = new ChatHistoryEntity();
             entity.setSessionId(sessionId);
+            entity.setUserId(SecurityUtils.getCurrentUserId());
             entity.setRole(role);
             entity.setContent(content);
             entity.setCreatedAt(LocalDateTime.now());

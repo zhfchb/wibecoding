@@ -17,6 +17,9 @@ public class ChatHistoryEntity {
     @TableId(type = IdType.AUTO)
     private Long id;
 
+    /** 归属用户 ID，用于对话数据隔离 */
+    private Long userId;
+
     /** 会话 ID，同一会话的多轮对话共享 */
     private String sessionId;
 

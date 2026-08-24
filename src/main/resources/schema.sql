@@ -28,14 +28,16 @@ CREATE TABLE IF NOT EXISTS document_chunk (
 CREATE INDEX IF NOT EXISTS idx_chunk_document_id ON document_chunk(document_id);
 CREATE INDEX IF NOT EXISTS idx_chunk_user_id ON document_chunk(user_id);
 
--- 对话历史
+-- 对话历史（user_id 用于用户级数据隔离）
 CREATE TABLE IF NOT EXISTS chat_history (
     id         BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_id    BIGINT,
     session_id VARCHAR(64) NOT NULL,
     role       VARCHAR(16) NOT NULL,
     content    TEXT        NOT NULL,
     created_at TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+CREATE INDEX IF NOT EXISTS idx_chat_history_user ON chat_history(user_id);
 
 -- 用户表(RBAC:单字段 role 存角色,ADMIN/USER)
 -- 表名用 sys_user 避免 user 在 H2/MySQL 中的保留字冲突

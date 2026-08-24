@@ -109,9 +109,6 @@ export default function LoginPage() {
             },
           ]}
         />
-        <Typography.Paragraph type="secondary" style={{ textAlign: 'center', fontSize: 12 }}>
-          默认账号：admin / admin123（管理员） · user / user123（普通用户）
-        </Typography.Paragraph>
       </Card>
     </div>
   )
