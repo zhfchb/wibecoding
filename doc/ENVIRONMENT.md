@@ -107,9 +107,9 @@ Get-Content "e:\Projects\wibecoding\src\main\resources\schema.sql" -Raw | & "E:\
 
 **初始化脚本**:`scripts/init-local-mysql.sql`(创建 agent 库 + agent@localhost / agent@% 用户,GRANT ALL ON agent.*)。
 
-**建表脚本**：`src/main/resources/schema.sql`(document + chat_history + sys_user 三张表)
-- H2 测试环境自动执行
-- 本地 MySQL 已执行,如需重置:`DROP TABLE document, chat_history, sys_user;` 后重新执行 schema.sql
+**建表脚本**：`src/main/resources/schema.sql`（11 张表：document / document_chunk / chat_history / sys_user / langgraph_checkpoint / multi_agent_task + 智能招聘 5 张——job_position / candidate_resume / match_result / interview_question / candidate_report；MySQL+H2 双兼容）
+
+- 本地 MySQL 已执行,如需重置:`DROP TABLE document, chat_history, sys_user;` 后重新执行 schema.sql（招聘表另见 `doc/sql/recruitment_schema.sql` MySQL 参考版本）
 
 **用户初始化脚本**:`scripts/init-users.sql`(插入默认 admin/admin123 + user/user123)
 ```powershell

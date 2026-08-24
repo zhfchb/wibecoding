@@ -1,6 +1,8 @@
 -- ============================================================
 -- 智能招聘助手 业务表 (M1)
--- 依赖: 现有 document / document_chunk / user / multi_agent_task 表
+-- 依赖: 现有 document / document_chunk / sys_user / multi_agent_task 表
+-- 说明: 本文件为 MySQL 参考版本(含 COMMENT/ENGINE/MEDIUMTEXT);
+--       新环境统一执行 src/main/resources/schema.sql(MySQL+H2 双兼容,已含本 5 张表)
 -- ============================================================
 
 -- 1. 岗位表: 一个HR可发布多个岗位

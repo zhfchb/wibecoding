@@ -101,6 +101,17 @@
 - ✅ **兼容性修复**:`VectorMatch` 实现 `Serializable`(LangGraph4j 序列化状态值需要)。
 - ✅ **测试**:新增 `AdaptiveRagServiceTest` 5 个场景(高分直接生成/低分不重试兜底/低分重写成功/低分重写失败/空检索兜底),全量 42 测试通过。
 
+**M10 智能招聘助手：真实业务场景落地（2026-08-24，已完成 ✅）**
+
+- ✅ **业务定位**：以智能招聘为真实场景串联 RAG/LLM/Agent 能力，规划详见 [RECRUITMENT_ASSISTANT_PLAN.md](RECRUITMENT_ASSISTANT_PLAN.md)。
+- ✅ **数据层**：新增 5 张业务表（job_position / candidate_resume / match_result / interview_question / candidate_report，已并入 `schema.sql`）。
+- ✅ **简历管道**：`RecruitmentService` 岗位 CRUD + JD 文档 LLM 结构化抽取导入（原文入知识库）+ 简历批量上传（复用文档管道解析/向量化 + LLM 抽取姓名/技能/年限/学历）。
+- ✅ **人岗匹配引擎**：`MatchService` 混合评分 = 规则分 70%（技能命中60+加分15+年限15+学历10）+ LLM 语义分 30%（批量调用识别技能语义等价 K8s≈Kubernetes），失败降级中性分不阻断，排名落库重跑覆盖。
+- ✅ **定制面试题**：`InterviewService` 基于岗位要求+技能命中/缺失+简历原文生成技术3/项目2/行为1题目（考察点/参考答案/难度随年限自适应），已淘汰候选人拦截。
+- ✅ **评估报告**：`ReportService` Tavily 市场行情搜索 + LLM 整合输出总评/优势/风险/建议薪资/推荐等级（STRONG_YES/YES/NO）+ Markdown 报告，行情引用存标题+URL。
+- ✅ **前端工作台**：岗位列表/创建/JD导入 + 匹配榜（环形分数/评分明细 Tooltip/HR 决策）+ 简历库 + 面试题/报告抽屉（ReactMarkdown）。
+- ⏳ **待做**：LangGraph4j 四阶段多 Agent 图 + HITL 中断 + Checkpoint 恢复；简历脱敏；评测集与量化指标。
+
 ### 2.2 规划中
 
 **AI 能力深化**：
@@ -142,11 +153,11 @@
 ## 4. 系统分层
 
 - **API 层**：`controller`，接收请求、校验入参、返回结果（含 SSE 流式响应）。
-- **业务层**：`service`，会话、检索、Agent 编排、知识库管理。
+- **业务层**：`service`，会话、检索、Agent 编排、知识库管理、招聘业务（岗位/匹配/面试题/报告）。
 - **接入层**：`config`，LLM、流式模型、向量库、Embedding、数据库、Redis、Security 等外部组件 Bean。
 - **数据层**：`domain`（DTO/VO）+ `entity`（数据库实体）+ `mapper`（MyBatis-Plus 数据访问）。
-- **基础设施层**：`rag`（切分、Embedding、向量存储）+ `tools`（Agent 工具）+ `exception`（全局异常）+ `common`（通用工具、响应封装）。
-- **安全层**：`security`（规划），Spring Security 配置、JWT 过滤器、用户认证。
+- **基础设施层**：`rag`（切分、Embedding、向量存储、自适应图）+ `tools`（Agent 工具）+ `workflow`（LangGraph4j 多 Agent 图）+ `exception`（全局异常）+ `common`（通用工具、响应封装）。
+- **安全层**：`security`，Spring Security 配置、JWT 过滤器、SecurityUtils（当前用户上下文）、用户认证。
 
 ## 5. 包结构
 
@@ -156,24 +167,16 @@
 src/main/java/com/example/agent
 ├── AgentApplication.java
 ├── config/       # DeepSeek（含流式）与 RAG（Embedding / VectorStore / Chunker）配置
-├── controller/   # REST 接口（chat / knowledge / agent）
-├── domain/       # 请求/响应模型（chat / knowledge）
-├── exception/    # 全局异常与统一错误响应
-├── rag/          # RAG 基础设施：切分、Embedding、向量存储抽象与实现
-├── service/      # 业务接口与实现（chat / ragChat / knowledge / agent）
-└── tools/        # Agent 工具（TimeTools / CalculatorTools）
-```
-
-规划扩展：
-
-```text
-├── entity/       # 数据库实体（Document / ChatHistory / User）
+├── controller/   # REST 接口（chat / rag / knowledge / agent / auth / recruitment）
+├── domain/       # 请求/响应模型（chat / knowledge / recruitment）
+├── entity/       # MyBatis-Plus 数据库实体（Document / ChatHistory / SysUser / 招聘5表等）
 ├── mapper/       # MyBatis-Plus 数据访问
-├── dto/          # 接口入参 DTO（带 @Valid 校验）
-├── vo/           # 视图模型（分页响应、统一封装）
-├── security/     # Spring Security 配置、JWT 过滤器、UserDetails
-├── workflow/     # LangGraph4j 图编排（自适应 RAG、多 Agent 协作、状态机）
-└── common/       # 通用响应封装、分页、常量、工具类
+├── exception/    # 全局异常与统一错误响应
+├── rag/          # RAG 基础设施：切分、Embedding、向量存储抽象与实现、自适应图
+├── security/     # Spring Security + JWT 过滤器 + SecurityUtils
+├── service/      # 业务接口与实现（ragChat / knowledge / agent / recruitment / match / interview / report）
+├── tools/        # Agent 工具（TimeTools / CalculatorTools / WebSearchTools）
+└── workflow/     # LangGraph4j 图编排（多 Agent 协作状态机）
 ```
 
 ## 6. 接口设计
@@ -332,6 +335,26 @@ LLM 根据用户问题自动决策调用哪个 `@Tool`，拿到工具返回值�
 
 - `GET /api/v1/tools`:查看可用 Agent 工具列表。
 
+### 6.10 智能招聘接口（M10，前缀 `/api/v1/recruitment`）
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| POST | `/positions` | 创建岗位（表单） |
+| POST | `/positions/import` | 上传 JD 文档导入（LLM 结构化抽取，原文入知识库） |
+| GET | `/positions` / `/positions/{id}` | 岗位列表 / 详情 |
+| POST | `/positions/{id}/close` | 关闭岗位 |
+| DELETE | `/positions/{id}` | 删除岗位（连带简历/匹配/面试题/报告/向量） |
+| POST | `/positions/{id}/resumes` | 批量上传简历（解析+向量化+LLM 抽取） |
+| GET | `/positions/{id}/resumes` | 岗位下简历列表 |
+| DELETE | `/resumes/{id}` | 删除简历（连带向量与匹配结果） |
+| POST | `/positions/{id}/match/run` | 触发人岗匹配（规则70%+LLM语义30%，排名落库） |
+| GET | `/positions/{id}/match/results` | 匹配结果排名 |
+| POST | `/match/{id}/decision?approved=` | HR 通过/淘汰决策 |
+| POST | `/resumes/{id}/questions/generate` | 生成定制面试题（技术3/项目2/行为1） |
+| GET | `/resumes/{id}/questions` | 查询面试题 |
+| POST | `/resumes/{id}/report/generate` | 生成评估报告（Tavily 行情+LLM 整合） |
+| GET | `/resumes/{id}/report` / `/positions/{id}/reports` | 查询报告 / 岗位报告列表 |
+
 ## 7. 配置规范
 
 - `application.yml`：提交到仓库，只放默认骨架。
@@ -400,6 +423,7 @@ mvn test "-Dtest=RagEvaluationTest"
 | M7 | RAG 优化：混合检索 + rerank + 效果对比 | 已完成 |
 | M8 | LangGraph4j 自适应 RAG：查询重写循环 + langchain4j 1.18.1 升级 | 已完成 |
 | M9 | 多 Agent 协作 + HITL：检索/生成/审核三角色 + 人工审批中断/恢复 | 已完成 |
+| M10 | 智能招聘助手：简历管道 + 混合评分匹配 + 定制面试题 + 评估报告（真实业务场景） | 已完成（多 Agent 图待做） |
 
 ## 10. 招聘市场对标
 
@@ -417,6 +441,10 @@ mvn test "-Dtest=RagEvaluationTest"
 | Agent / Function Calling | ✅ 已完成 | "基于 Function Calling 实现 Agent 工具编排" |
 | 混合检索 + rerank | ✅ 已完成 | "稠密+稀疏混合检索（RRF 融合）+ BGE-Reranker-v2-M3 精排，两段式 recall@20→top3" |
 | 多轮会话 + 上下文管理 | ✅ 已完成 | "Redis 维护多轮会话上下文，支持历史拼接" |
+| LLM 结构化抽取（非结构化→JSON） | ✅ 已完成（M10） | "LLM 抽取 JD/简历结构化字段（技能/年限/学历），失败容错降级" |
+| 规则+LLM 混合评分引擎 | ✅ 已完成（M10） | "人岗匹配混合评分：可解释规则分 70% + LLM 语义分 30%（识别技能语义等价）" |
+| Web 搜索集成（Function Calling） | ✅ 已完成 | "Tavily 搜索工具：RAG 空结果兜底 + 评估报告市场行情引用" |
+| 真实业务场景闭环 | ✅ 已完成（M10） | "智能招聘全流程：岗位→简历→匹配→HR决策→面试题→评估报告，含前端工作台" |
 | LangGraph4j 有状态图编排（自适应 RAG 循环） | ✅ 已完成 | "基于 LangGraph4j 状态图实现自适应 RAG：查询重写→检索→质量评分→重试/生成，检索不足自动重写重试" |
 
 ### 10.2 Java 后端岗能力对标

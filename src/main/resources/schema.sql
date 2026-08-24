@@ -82,3 +82,100 @@ CREATE TABLE IF NOT EXISTS multi_agent_task (
 CREATE INDEX IF NOT EXISTS idx_mat_task_id ON multi_agent_task(task_id);
 CREATE INDEX IF NOT EXISTS idx_mat_status ON multi_agent_task(status);
 CREATE INDEX IF NOT EXISTS idx_mat_thread_id ON multi_agent_task(thread_id);
+
+-- ============================================================
+-- 智能招聘助手 业务表（与 doc/sql/recruitment_schema.sql 对应，
+-- 此处为 MySQL + H2 双兼容版本：TEXT/TIMESTAMP，无 COMMENT/ENGINE）
+-- ============================================================
+
+-- 1. 岗位表：一个 HR 可发布多个岗位
+CREATE TABLE IF NOT EXISTS job_position (
+    id               BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_id          BIGINT       NOT NULL,
+    title            VARCHAR(200) NOT NULL,
+    department       VARCHAR(100),
+    city             VARCHAR(50),
+    salary_min       INT,
+    salary_max       INT,
+    required_skills  TEXT,
+    preferred_skills TEXT,
+    min_years        INT DEFAULT 0,
+    education        VARCHAR(20),
+    description      TEXT,
+    doc_id           VARCHAR(64),
+    status           VARCHAR(20) DEFAULT 'OPEN',
+    created_at       TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at       TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_position_user ON job_position(user_id);
+CREATE INDEX IF NOT EXISTS idx_position_status ON job_position(status);
+
+-- 2. 候选人简历表
+CREATE TABLE IF NOT EXISTS candidate_resume (
+    id              BIGINT AUTO_INCREMENT PRIMARY KEY,
+    position_id     BIGINT       NOT NULL,
+    user_id         BIGINT       NOT NULL,
+    candidate_name  VARCHAR(100),
+    phone           VARCHAR(30),
+    email           VARCHAR(100),
+    skills          TEXT,
+    years_exp       INT,
+    education       VARCHAR(50),
+    last_company    VARCHAR(200),
+    raw_text        TEXT,
+    doc_id          VARCHAR(64),
+    parse_status    VARCHAR(20) DEFAULT 'PENDING',
+    parse_error     VARCHAR(500),
+    created_at      TIMESTAMP  NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_resume_position ON candidate_resume(position_id);
+CREATE INDEX IF NOT EXISTS idx_resume_user ON candidate_resume(user_id);
+
+-- 3. 人岗匹配结果表
+CREATE TABLE IF NOT EXISTS match_result (
+    id           BIGINT AUTO_INCREMENT PRIMARY KEY,
+    position_id  BIGINT NOT NULL,
+    resume_id    BIGINT NOT NULL,
+    match_score  DECIMAL(5,2),
+    skill_hits   TEXT,
+    skill_gaps   TEXT,
+    score_detail TEXT,
+    hr_decision  VARCHAR(20) DEFAULT 'PENDING',
+    rank_no      INT,
+    task_id      BIGINT,
+    created_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_match_position ON match_result(position_id);
+CREATE INDEX IF NOT EXISTS idx_match_resume ON match_result(resume_id);
+
+-- 4. 定制面试题表
+CREATE TABLE IF NOT EXISTS interview_question (
+    id               BIGINT AUTO_INCREMENT PRIMARY KEY,
+    resume_id        BIGINT NOT NULL,
+    position_id      BIGINT NOT NULL,
+    category         VARCHAR(50),
+    question         TEXT,
+    assess_point     VARCHAR(500),
+    reference_answer TEXT,
+    difficulty       VARCHAR(10),
+    hr_decision      VARCHAR(20) DEFAULT 'PENDING',
+    created_at       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_question_resume ON interview_question(resume_id);
+
+-- 5. 候选人评估报告表
+CREATE TABLE IF NOT EXISTS candidate_report (
+    id              BIGINT AUTO_INCREMENT PRIMARY KEY,
+    resume_id       BIGINT NOT NULL,
+    position_id     BIGINT NOT NULL,
+    summary         TEXT,
+    strength        TEXT,
+    risk            TEXT,
+    salary_suggest  VARCHAR(100),
+    market_ref      TEXT,
+    final_recommend VARCHAR(20),
+    report_md       TEXT,
+    hr_decision     VARCHAR(20) DEFAULT 'PENDING',
+    created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_report_resume ON candidate_report(resume_id);
