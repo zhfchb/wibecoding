@@ -1,6 +1,6 @@
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { Layout, Menu, Button, Space, Typography } from 'antd'
-import { LogoutOutlined, MessageOutlined, RobotOutlined, FileTextOutlined } from '@ant-design/icons'
+import { LogoutOutlined, MessageOutlined, RobotOutlined, FileTextOutlined, TeamOutlined } from '@ant-design/icons'
 import { useAuth } from '../context/AuthContext'
 
 const { Header, Content, Sider } = Layout
@@ -9,6 +9,7 @@ const menuItems = [
   { key: '/chat', icon: <MessageOutlined />, label: 'RAG 对话' },
   { key: '/agent', icon: <RobotOutlined />, label: '多 Agent 任务' },
   { key: '/knowledge', icon: <FileTextOutlined />, label: '知识库管理' },
+  { key: '/recruitment', icon: <TeamOutlined />, label: '智能招聘' },
 ]
 
 export default function MainLayout() {
@@ -29,7 +30,9 @@ export default function MainLayout() {
         </div>
         <Menu
           mode="inline"
-          selectedKeys={[location.pathname]}
+          selectedKeys={menuItems
+            .filter((item) => location.pathname.startsWith(item.key))
+            .map((item) => item.key)}
           items={menuItems}
           onClick={({ key }) => navigate(key)}
         />

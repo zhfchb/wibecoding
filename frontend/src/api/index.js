@@ -125,3 +125,50 @@ export const knowledgeApi = {
   deleteDocument: (documentId) =>
     api.delete(`/knowledge/documents/${documentId}`),
 }
+
+// ======== 智能招聘 API ========
+export const recruitmentApi = {
+  // 岗位管理
+  createPosition: (data) => api.post('/recruitment/positions', data),
+  importPosition: (file) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return api.post('/recruitment/positions/import', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+  listPositions: () => api.get('/recruitment/positions'),
+  getPosition: (id) => api.get(`/recruitment/positions/${id}`),
+  closePosition: (id) => api.post(`/recruitment/positions/${id}/close`),
+  deletePosition: (id) => api.delete(`/recruitment/positions/${id}`),
+
+  // 简历管理
+  uploadResumes: (positionId, files) => {
+    const formData = new FormData()
+    files.forEach((f) => formData.append('files', f))
+    return api.post(`/recruitment/positions/${positionId}/resumes`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 300000, // 批量解析+LLM抽取较慢
+    })
+  },
+  listResumes: (positionId) => api.get(`/recruitment/positions/${positionId}/resumes`),
+  deleteResume: (resumeId) => api.delete(`/recruitment/resumes/${resumeId}`),
+
+  // 人岗匹配
+  runMatch: (positionId) =>
+    api.post(`/recruitment/positions/${positionId}/match/run`, null, { timeout: 300000 }),
+  listMatchResults: (positionId) =>
+    api.get(`/recruitment/positions/${positionId}/match/results`),
+  decide: (matchId, approved) =>
+    api.post(`/recruitment/match/${matchId}/decision`, null, { params: { approved } }),
+
+  // 面试题
+  generateQuestions: (resumeId) =>
+    api.post(`/recruitment/resumes/${resumeId}/questions/generate`, null, { timeout: 300000 }),
+  listQuestions: (resumeId) => api.get(`/recruitment/resumes/${resumeId}/questions`),
+
+  // 评估报告
+  generateReport: (resumeId) =>
+    api.post(`/recruitment/resumes/${resumeId}/report/generate`, null, { timeout: 300000 }),
+  getReport: (resumeId) => api.get(`/recruitment/resumes/${resumeId}/report`),
+}
