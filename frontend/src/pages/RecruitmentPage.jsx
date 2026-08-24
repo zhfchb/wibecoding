@@ -12,6 +12,19 @@ import { recruitmentApi } from '../api'
 
 const { Text } = Typography
 
+// 常用技能选项：下拉可直接勾选，也支持手动输入回车添加自定义技能
+const SKILL_OPTIONS = [
+  'Java', 'Spring Boot', 'Spring Cloud', 'MyBatis', 'MyBatis-Plus', 'MySQL',
+  'Redis', 'Kafka', 'RabbitMQ', 'RocketMQ', 'Elasticsearch', 'MongoDB',
+  'Docker', 'Kubernetes', 'K8s', 'Jenkins', 'CI/CD', 'Linux', 'Nginx',
+  '微服务', '分布式', '高并发', 'JVM', '多线程', 'Netty',
+  'Python', 'Go', 'C++', 'Rust',
+  'JavaScript', 'TypeScript', 'React', 'Vue', 'Node.js', 'HTML/CSS',
+  'LangChain4j', 'RAG', 'LLM', '大模型', 'Embedding', '向量数据库',
+  '算法', '数据结构', '机器学习', '深度学习', 'PyTorch', 'TensorFlow',
+  'Git', 'Maven', 'Gradle', '单元测试', '性能调优',
+].map((s) => ({ value: s }))
+
 // 创建岗位表单
 function PositionFormModal({ open, onClose, onCreated }) {
   const [form] = Form.useForm()
@@ -71,12 +84,20 @@ function PositionFormModal({ open, onClose, onCreated }) {
         <Form.Item
           name="requiredSkills"
           label="必须技能"
-          rules={[{ required: true, message: '请输入至少一个必须技能' }]}
+          rules={[{ required: true, message: '请选择或输入至少一个必须技能' }]}
         >
-          <Select mode="tags" placeholder="输入后回车添加，如 Java、Spring Boot" />
+          <Select
+            mode="tags"
+            options={SKILL_OPTIONS}
+            placeholder="下拉选择或输入后回车添加，如 Java、Spring Boot"
+          />
         </Form.Item>
         <Form.Item name="preferredSkills" label="加分技能">
-          <Select mode="tags" placeholder="输入后回车添加，如 Docker、K8s" />
+          <Select
+            mode="tags"
+            options={SKILL_OPTIONS}
+            placeholder="下拉选择或输入后回车添加，如 Docker、K8s"
+          />
         </Form.Item>
         <Space size="middle" style={{ display: 'flex' }}>
           <Form.Item name="minYears" label="最低年限" style={{ width: 190 }}>
