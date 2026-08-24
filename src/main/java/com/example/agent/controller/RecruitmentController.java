@@ -1,10 +1,12 @@
 package com.example.agent.controller;
 
 import com.example.agent.config.OpenApiConfig;
+import com.example.agent.domain.recruitment.MatchResultResponse;
 import com.example.agent.domain.recruitment.PositionRequest;
 import com.example.agent.domain.recruitment.PositionResponse;
 import com.example.agent.domain.recruitment.ResumeResponse;
 import com.example.agent.domain.recruitment.ResumeUploadResponse;
+import com.example.agent.service.MatchService;
 import com.example.agent.service.RecruitmentService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -24,7 +26,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
-@Tag(name = "智能招聘", description = "岗位管理 / 简历批量上传与解析")
+@Tag(name = "智能招聘", description = "岗位管理 / 简历批量上传与解析 / 人岗匹配")
 @SecurityRequirement(name = OpenApiConfig.SECURITY_SCHEME_NAME)
 @RestController
 @RequestMapping("/api/v1/recruitment")
@@ -32,6 +34,7 @@ import java.util.List;
 public class RecruitmentController {
 
     private final RecruitmentService recruitmentService;
+    private final MatchService matchService;
 
     // ==================== 岗位管理 ====================
 
@@ -97,5 +100,25 @@ public class RecruitmentController {
     @DeleteMapping("/resumes/{resumeId}")
     public void deleteResume(@PathVariable Long resumeId) {
         recruitmentService.deleteResume(resumeId);
+    }
+
+    // ==================== 人岗匹配 ====================
+
+    @Operation(summary = "触发人岗匹配", description = "对该岗位下全部已解析简历执行匹配：规则评分(70%) + LLM语义评分(30%)，按总分排名落库并返回结果列表")
+    @PostMapping("/positions/{id}/match/run")
+    public List<MatchResultResponse> runMatch(@PathVariable("id") Long positionId) {
+        return matchService.runMatch(positionId);
+    }
+
+    @Operation(summary = "查询匹配结果", description = "返回该岗位最近一次匹配的排名结果，含评分明细/技能命中/技能缺失")
+    @GetMapping("/positions/{id}/match/results")
+    public List<MatchResultResponse> listMatchResults(@PathVariable("id") Long positionId) {
+        return matchService.listMatches(positionId);
+    }
+
+    @Operation(summary = "HR 决策", description = "对某条匹配结果进行决策：approved=true 进入面试流程，false 淘汰")
+    @PostMapping("/match/{matchId}/decision")
+    public void decide(@PathVariable Long matchId, @RequestParam boolean approved) {
+        matchService.decide(matchId, approved);
     }
 }
