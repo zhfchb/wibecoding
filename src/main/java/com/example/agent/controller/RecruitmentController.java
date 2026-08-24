@@ -1,6 +1,7 @@
 package com.example.agent.controller;
 
 import com.example.agent.config.OpenApiConfig;
+import com.example.agent.domain.recruitment.CandidateReportResponse;
 import com.example.agent.domain.recruitment.InterviewQuestionResponse;
 import com.example.agent.domain.recruitment.MatchResultResponse;
 import com.example.agent.domain.recruitment.PositionRequest;
@@ -10,6 +11,7 @@ import com.example.agent.domain.recruitment.ResumeUploadResponse;
 import com.example.agent.service.InterviewService;
 import com.example.agent.service.MatchService;
 import com.example.agent.service.RecruitmentService;
+import com.example.agent.service.ReportService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -38,6 +40,7 @@ public class RecruitmentController {
     private final RecruitmentService recruitmentService;
     private final MatchService matchService;
     private final InterviewService interviewService;
+    private final ReportService reportService;
 
     // ==================== 岗位管理 ====================
 
@@ -137,5 +140,25 @@ public class RecruitmentController {
     @GetMapping("/resumes/{resumeId}/questions")
     public List<InterviewQuestionResponse> listQuestions(@PathVariable Long resumeId) {
         return interviewService.listQuestions(resumeId);
+    }
+
+    // ==================== 候选人评估报告 ====================
+
+    @Operation(summary = "生成评估报告", description = "匹配评分+技能画像+市场行情(Tavily搜索) 由 LLM 整合成评估报告：总评/优势/风险/建议薪资/最终推荐(STRONG_YES/YES/NO)+完整Markdown；需先完成匹配，已淘汰候选人拒绝生成，重新生成覆盖旧报告")
+    @PostMapping("/resumes/{resumeId}/report/generate")
+    public CandidateReportResponse generateReport(@PathVariable Long resumeId) {
+        return reportService.generate(resumeId);
+    }
+
+    @Operation(summary = "查询评估报告", description = "返回该候选人的评估报告（取最新一份）")
+    @GetMapping("/resumes/{resumeId}/report")
+    public CandidateReportResponse getReport(@PathVariable Long resumeId) {
+        return reportService.getReport(resumeId);
+    }
+
+    @Operation(summary = "岗位下报告列表", description = "返回该岗位全部候选人的评估报告，按匹配分降序")
+    @GetMapping("/positions/{id}/reports")
+    public List<CandidateReportResponse> listReports(@PathVariable("id") Long positionId) {
+        return reportService.listReports(positionId);
     }
 }
