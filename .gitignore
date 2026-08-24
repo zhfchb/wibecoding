@@ -27,3 +27,6 @@ Thumbs.db
 
 ### Claude Code ###
 .claude/settings.local.json
+
+### 临时文件 ###
+.git-commit-msg.txt
