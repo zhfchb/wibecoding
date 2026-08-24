@@ -1,11 +1,13 @@
 package com.example.agent.controller;
 
 import com.example.agent.config.OpenApiConfig;
+import com.example.agent.domain.recruitment.InterviewQuestionResponse;
 import com.example.agent.domain.recruitment.MatchResultResponse;
 import com.example.agent.domain.recruitment.PositionRequest;
 import com.example.agent.domain.recruitment.PositionResponse;
 import com.example.agent.domain.recruitment.ResumeResponse;
 import com.example.agent.domain.recruitment.ResumeUploadResponse;
+import com.example.agent.service.InterviewService;
 import com.example.agent.service.MatchService;
 import com.example.agent.service.RecruitmentService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -35,6 +37,7 @@ public class RecruitmentController {
 
     private final RecruitmentService recruitmentService;
     private final MatchService matchService;
+    private final InterviewService interviewService;
 
     // ==================== 岗位管理 ====================
 
@@ -120,5 +123,19 @@ public class RecruitmentController {
     @PostMapping("/match/{matchId}/decision")
     public void decide(@PathVariable Long matchId, @RequestParam boolean approved) {
         matchService.decide(matchId, approved);
+    }
+
+    // ==================== 定制面试题 ====================
+
+    @Operation(summary = "生成定制面试题", description = "基于岗位要求+候选人技能/缺失项+简历原文，LLM 生成 6 道面试题(技术3/项目2/行为1)，含考察点与参考答案；重新生成覆盖旧题，已被淘汰的候选人不允许生成")
+    @PostMapping("/resumes/{resumeId}/questions/generate")
+    public List<InterviewQuestionResponse> generateQuestions(@PathVariable Long resumeId) {
+        return interviewService.generate(resumeId);
+    }
+
+    @Operation(summary = "查询面试题", description = "返回该候选人已生成的全部面试题")
+    @GetMapping("/resumes/{resumeId}/questions")
+    public List<InterviewQuestionResponse> listQuestions(@PathVariable Long resumeId) {
+        return interviewService.listQuestions(resumeId);
     }
 }
