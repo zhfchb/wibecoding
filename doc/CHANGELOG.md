@@ -1,5 +1,33 @@
 # 变更日志
 
+## 2026-08-24
+
+### 智能招聘助手全栈落地（M1-M5）
+
+以真实业务场景（智能招聘）串联 RAG / LLM / Agent 能力，完成从岗位创建到评估报告的全链路闭环。
+
+**M1 数据层与简历管道**（commit `e050117`）
+- 新增 5 张业务表（[recruitment_schema.sql](file:///e:/Projects/wibecoding/doc/sql/recruitment_schema.sql)）：job_position / candidate_resume / match_result / interview_question / candidate_report
+- [RecruitmentService](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/service/RecruitmentService.java)：岗位 CRUD、JD 文档 LLM 结构化抽取导入（原文同步入知识库）、简历批量上传（解析入库 + 向量化 + LLM 抽取姓名/技能/年限/学历）
+
+**M2 人岗匹配引擎**（commit `84069df`）
+- [MatchService](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/service/impl/MatchServiceImpl.java)：混合评分模型，总分 = 规则分 70%（技能命中60 + 加分技能15 + 年限15 + 学历10）+ LLM 语义分 30%（批量调用识别技能语义等价，如 K8s≈Kubernetes、Spring Cloud≈Spring Boot）
+- LLM 失败自动降级中性分 50 不阻断；结果按总分降序排名落库，重跑覆盖；命中/缺失清单剔除重复项
+- 端到端实测：3 份简历（强匹配 94 / 语义部分匹配 59 / 完全不匹配 21）评分排序正确
+
+**M3 LLM 定制面试题**（commit `668ac03`）
+- [InterviewService](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/service/impl/InterviewServiceImpl.java)：基于岗位要求 + 技能命中/缺失 + 简历原文生成技术 3 / 项目 2 / 行为 1 面试题，含考察点、参考答案要点；难度随年限自适应（5 年以上必含 HARD）
+- 业务闭环：已被 HR 淘汰的候选人拒绝生成（400）
+
+**M4 候选人评估报告**（commit `f501647`）
+- [ReportService](file:///e:/Projects/wibecoding/src/main/java/com/example/agent/service/impl/ReportServiceImpl.java)：匹配评分 + 技能画像 + Tavily 市场行情搜索 → LLM 整合输出总评/优势/风险/建议薪资/推荐等级（STRONG_YES/YES/NO）+ 完整 Markdown 报告
+- 市场行情引用存标题+URL；搜索失败不阻断报告；实测 94 分 → STRONG_YES（32-40k，5 条行情引用），59 分 → NO
+
+**M5 前端招聘工作台**（commit `bd96e4e`）
+- [RecruitmentPage](file:///e:/Projects/wibecoding/frontend/src/pages/RecruitmentPage.jsx)：岗位列表、表单创建、JD 文档导入
+- [PositionWorkbenchPage](file:///e:/Projects/wibecoding/frontend/src/pages/PositionWorkbenchPage.jsx)：候选人匹配榜（环形分数/奖牌排名/评分明细 Tooltip/技能标签/HR 决策）+ 简历库 + 面试题抽屉 + 评估报告抽屉（ReactMarkdown 渲染）
+- 浏览器端到端测试 7 项全部通过
+
 ## 2026-08-06（提交 2）
 
 ### 多轮对话修复 + 会话删除 + 知识库删除 + PDF 上传 + Markdown 渲染 + 向量库持久化

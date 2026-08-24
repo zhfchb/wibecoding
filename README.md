@@ -1,6 +1,6 @@
 # 🧠 Smart Knowledge Agent
 
-基于 RAG（检索增强生成）+ Agent 工具调用的智能知识库系统。上传文档 → 语义检索 → LLM 生成回答，支持 Web 搜索兜底、多 Agent 协作、自适应 RAG 重写等进阶能力。
+基于 RAG（检索增强生成）+ Agent 工具调用的智能知识库系统，并以**智能招聘助手**作为真实业务场景落地：上传 JD 与简历 → LLM 解析结构化 → 人岗匹配评分 → 定制面试题 → 候选人评估报告（含市场行情）。同时支持 Web 搜索兜底、多 Agent 协作、自适应 RAG 重写等进阶能力。
 
 ## ✨ Features
 
@@ -14,6 +14,15 @@
 - 💬 **多轮对话**：基于 MySQL 持久化的会话历史，支持流式 SSE 输出
 - 🔐 **JWT 认证 + RBAC**：admin / user 两种角色，Spring Security 安全过滤链
 - 🐳 **一键部署**：Docker Compose 全栈部署（app + MySQL + Redis + Qdrant）
+
+### 🎯 智能招聘助手（真实业务场景）
+
+- 📋 **岗位管理**：表单创建或上传 JD 文档（LLM 自动抽取岗位信息，原文同步入知识库）
+- 📄 **简历解析管道**：批量上传 PDF/TXT/MD，自动解析入库 + 向量化 + LLM 结构化抽取（姓名/技能/年限/学历）
+- ⚖️ **人岗匹配引擎**：规则评分（70%，技能命中/加分技能/年限/学历）+ LLM 语义评分（30%，识别 K8s≈Kubernetes、Spring Cloud≈Spring Boot 等语义等价），加权排名落库
+- ✅ **HR 决策闭环**：通过/淘汰决策驱动后续流程，已淘汰候选人自动拦截
+- ❓ **定制面试题**：基于岗位要求 + 技能缺失项 + 简历原文生成技术/项目/行为三类题目（含考察点、参考答案、难度自适应）
+- 📊 **候选人评估报告**：匹配评分 + 技能画像 + Tavily 市场行情 → LLM 整合输出总评/优势/风险/建议薪资/推荐等级（STRONG_YES/YES/NO）+ 完整 Markdown 报告
 
 ## 🏗️ Architecture
 
@@ -187,6 +196,17 @@ npm run dev
 | **Session** | | |
 | GET | `/api/v1/chat/sessions` | 会话列表 |
 | DELETE | `/api/v1/chat/sessions/{id}` | 删除单个会话 |
+| **Recruitment** | | |
+| POST | `/api/v1/recruitment/positions` | 创建岗位 |
+| POST | `/api/v1/recruitment/positions/import` | 上传 JD 文档导入岗位（LLM 解析） |
+| GET | `/api/v1/recruitment/positions` | 岗位列表 |
+| DELETE | `/api/v1/recruitment/positions/{id}` | 删除岗位（连带简历/匹配/面试题/报告） |
+| POST | `/api/v1/recruitment/positions/{id}/resumes` | 批量上传简历（解析+向量化+LLM 抽取） |
+| POST | `/api/v1/recruitment/positions/{id}/match/run` | 触发人岗匹配（规则+LLM 混合评分） |
+| GET | `/api/v1/recruitment/positions/{id}/match/results` | 匹配结果排名 |
+| POST | `/api/v1/recruitment/match/{id}/decision` | HR 通过/淘汰决策 |
+| POST | `/api/v1/recruitment/resumes/{id}/questions/generate` | 生成定制面试题 |
+| POST | `/api/v1/recruitment/resumes/{id}/report/generate` | 生成候选人评估报告（含市场行情） |
 
 ## 🧩 RAG Pipeline
 
@@ -215,6 +235,33 @@ npm run dev
 ┌──────────────┐     无结果 / 低相关
 │  LLM 生成回答 │──────────────────▶ Agent + Tavily 搜索兜底
 └──────────────┘
+```
+
+## 🎯 Recruitment Pipeline
+
+```
+创建岗位（表单 / 上传 JD → LLM 抽取）
+  │
+  ▼
+批量上传简历（PDF/TXT/MD → 解析入库 + 向量化 + LLM 结构化抽取）
+  │
+  ▼
+┌─────────────────────────────────────────────┐
+│              人岗匹配引擎                     │
+│  规则分 70%：技能命中60 + 加分15 + 年限15 + 学历10 │
+│  LLM 语义分 30%：技能语义等价判断（K8s≈Kubernetes）│
+└──────────────────┬──────────────────────────┘
+                   ▼
+        匹配结果排名落库（技能命中/缺失清单）
+                   │
+          ┌────────┴────────┐
+          ▼                 ▼
+      HR 通过 ✅         HR 淘汰 ❌（拦截后续流程）
+          │
+          ├──▶ 定制面试题（技术3/项目2/行为1，难度随年限自适应）
+          │
+          └──▶ 评估报告（Tavily 市场行情 + LLM 整合
+                → 总评/优势/风险/建议薪资/推荐等级 + Markdown 报告）
 ```
 
 ## 🌐 Web Search Fallback

@@ -399,26 +399,28 @@ POST   /api/v1/chat                                  sessionId绑定position上�
 
 ## 九、实施计划（4个里程碑）
 
-### M1：数据与管道打通（基础）
+> **实施进度（2026-08-24）**：M1、M2 已完成并提交（含前端工作台），M3 已完成单 Agent 版本（面试题生成、评估报告、Tavily 市场行情），多 Agent 图（LangGraph4j 四阶段 + HITL 中断）与 M4 打磨项待做。
+
+### M1：数据与管道打通（基础）✅ 已完成（commit `e050117`）
 - 建 5 张表 + Entity + Mapper
 - 简历上传复用文档管道（解析→分块→向量化），payload 加 position_id
 - JD 表单 CRUD + JD文档上传
-- 验收：能上传简历并在岗位下看到解析结果（技能/年限/学历）
+- 验收：能上传简历并在岗位下看到解析结果（技能/年限/学历）——✅ 实测通过（3 份简历全部 PARSED 且结构化字段正确）
 
-### M2：单Agent匹配 MVP（核心价值）
-- JdMatcherTool（规则+LLM混合评分）
+### M2：单Agent匹配 MVP（核心价值）✅ 已完成（commit `84069df`）
+- JdMatcherTool（规则+LLM混合评分）——✅ 以 MatchService 实现（规则70%+LLM语义30%）
 - 一键匹配：RAG召回 → 评分 → 排序落库
-- 匹配看板页（列表版，无泳道）
-- 验收：上传10份简历+1个JD，30秒内出排序+评分明细
+- 匹配看板页（列表版，无泳道）——✅ 前端工作台已含匹配榜（commit `bd96e4e`）
+- 验收：上传10份简历+1个JD，30秒内出排序+评分明细——✅ 实测 3 份简历 1.7 秒出结果（含 LLM 语义评分）
 
-### M3：多Agent全流程（差异化亮点）
-- RecruitmentGraphFactory 四阶段图 + 3次HITL中断
-- SalaryBenchmarkTool（RAG+Web搜索混合）
-- 面试题生成、评估报告生成
-- 审核中心扩展、SSE 进度推送
-- 验收：完整走通"上传→匹配→审核→出题→审核→报告"，中途杀进程重启可恢复（Checkpoint）
+### M3：多Agent全流程（差异化亮点）🔶 部分完成
+- RecruitmentGraphFactory 四阶段图 + 3次HITL中断——⏳ 待做（当前为服务直调模式）
+- SalaryBenchmarkTool（RAG+Web搜索混合）——✅ 已实现（ReportService 内嵌 Tavily 市场行情搜索，commit `f501647`）
+- 面试题生成、评估报告生成——✅ 已实现（commit `668ac03` / `f501647`）
+- 审核中心扩展、SSE 进度推送——⏳ 待做
+- 验收：完整走通"上传→匹配→审核→出题→审核→报告"——✅ 已走通（审核简化为 HR 决策接口）；进程重启恢复（Checkpoint）待多 Agent 图落地
 
-### M4：打磨与量化（面试弹药）
+### M4：打磨与量化（面试弹药）⏳ 待做
 - 看板泳道 + 雷达图 + 导出
 - 简历脱敏（姓名/手机号打码存储）
 - 构造评测集：20个JD×50份简历标注金标准，输出匹配准确率（Top5命中率/Precision@K）
