@@ -7,7 +7,7 @@ package com.example.agent.workflow.multiagent;
  * <pre>
  * RUNNING → AWAITING_REVIEW ──approve──→ APPROVED → COMPLETED
  *                          ──reject───→ REJECTED → RUNNING（重新生成）→ AWAITING_REVIEW ...
- *                          ──reject(maxRejects)──→ COMPLETED（强制通过）
+ *                          ──reject(maxRejects)──→ FAILED（终止失败）
  * </pre>
  */
 public enum TaskStatus {

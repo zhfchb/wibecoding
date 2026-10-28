@@ -31,6 +31,10 @@ public class AiGateway {
             JsonNode result = client.post().uri(path).body(body).retrieve().body(JsonNode.class);
             if (result == null) throw new IllegalStateException();
             return result;
+        } catch (org.springframework.web.client.RestClientResponseException e) {
+            if (e.getStatusCode().value() == 404) throw new IllegalArgumentException("Task not found");
+            if (e.getStatusCode().value() == 409) throw new IllegalStateException("Task state or revision conflict");
+            throw new IllegalStateException("AI service request failed: " + path);
         } catch (Exception e) {
             throw new IllegalStateException("AI service request failed: " + path);
         }

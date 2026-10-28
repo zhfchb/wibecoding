@@ -22,7 +22,7 @@ import java.util.Map;
  * RAG 增强链路控制器（M8）：承载自适应 RAG 等高级检索端点。
  * 普通对话 / 流式对话 / 历史查询仍在 {@link ChatController}。
  */
-@Tag(name = "RAG 增强", description = "自适应 RAG（LangGraph4j 状态图：查询重写→检索→评分→重试/生成）")
+@Tag(name = "RAG 增强", description = "自适应 RAG（Python LangGraph 状态图：查询重写→检索→评分→重试/生成）")
 @SecurityRequirement(name = OpenApiConfig.SECURITY_SCHEME_NAME)
 @RestController
 @RequestMapping("/api/v1/rag")
@@ -33,7 +33,7 @@ public class RagController {
     private final RagProperties ragProperties;
 
     @Operation(summary = "自适应 RAG 对话",
-            description = "基于 LangGraph4j 状态图：查询重写 → 混合检索 → 质量评分 → 重试/生成。"
+            description = "基于 Python LangGraph 状态图：查询重写 → 混合检索 → 质量评分 → 重试/生成。"
                     + "检索 top1 分数低于阈值时自动重写查询重试，重试耗尽走兜底回答。"
                     + "通过 rag.adaptive.enabled 控制开关，关闭时返回 501。")
     @PostMapping("/adaptive")

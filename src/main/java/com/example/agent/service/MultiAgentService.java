@@ -7,7 +7,7 @@ import java.util.List;
 /**
  * 多 Agent 协作服务（M9）。
  *
- * <p>基于 LangGraph4j 状态图编排「检索 Agent → 生成 Agent → HITL 审核」工作流。
+ * <p>基于 Python LangGraph 状态图编排「检索 Agent → 生成 Agent → HITL 审核」工作流。
  * 由于 HITL 需要人工介入，接口采用异步任务模式：提交→轮询→审批。
  */
 public interface MultiAgentService {
@@ -43,7 +43,7 @@ public interface MultiAgentService {
      * 人工审批：拒绝，携带反馈，触发重新生成。
      * @param taskId 任务 ID
      * @param feedback 拒绝原因/修改建议，供生成 Agent 下轮参考
-     * @return 审批后的任务快照（状态应为 AWAITING_REVIEW，除非达到 maxRejects 强制通过）
+     * @return 审批后的任务快照（状态应为 AWAITING_REVIEW，除非达到 maxRejects 终止失败）
      */
     MultiAgentTask reject(String taskId, String feedback);
 }

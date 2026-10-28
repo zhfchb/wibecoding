@@ -56,7 +56,7 @@ public record RagProperties(
     }
 
     /**
-     * 自适应 RAG 配置（M8）：基于 LangGraph4j 状态图的查询重写→检索→评分→重试/生成循环。
+     * 自适应 RAG 配置（M8）：基于 Python LangGraph 状态图的查询重写→检索→评分→重试/生成循环。
      *
      * @param enabled    是否启用自适应 RAG 链路
      * @param maxRetries 查询重写最大重试次数（0=仅检索一次不重写，1=允许 1 次重写后兜底）
@@ -69,7 +69,7 @@ public record RagProperties(
      * 多 Agent 协作配置（M9）：检索 Agent → 生成 Agent → HITL 人工审核。
      *
      * @param enabled     是否启用多 Agent 工作流
-     * @param maxRejects  最多被拒绝次数，超过后强制通过（避免无限循环），默认 2
+     * @param maxRejects  最多被拒绝次数，超过后终止失败（避免无限循环），默认 2
      */
     public record MultiAgent(boolean enabled, int maxRejects) {
     }
