@@ -30,3 +30,10 @@ Thumbs.db
 
 ### 临时文件 ###
 .git-commit-msg.txt
+
+### Python AI service ###
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+.env

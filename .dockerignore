@@ -21,3 +21,9 @@ scripts/
 # 系统文件
 .DS_Store
 Thumbs.db
+
+# Python local runtime and secrets
+**/.venv/
+**/__pycache__/
+**/.pytest_cache/
+**/.env

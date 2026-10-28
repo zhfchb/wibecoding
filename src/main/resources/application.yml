@@ -101,3 +101,9 @@ springdoc:
     operations-sorter: method   # 接口按 HTTP 方法排序
     tags-sorter: alpha          # 分组按字母排序
   packages-to-scan: com.example.agent.controller
+ai:
+  resume:
+    provider: ${AI_RESUME_PROVIDER:java}
+  service:
+    base-url: ${AI_SERVICE_BASE_URL:http://localhost:8000}
+    token: ${AI_SERVICE_TOKEN:}

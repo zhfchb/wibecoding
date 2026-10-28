@@ -9,6 +9,18 @@ on:
     branches: [main, master]
 
 jobs:
+  python:
+    name: Python AI contract tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r ai-service/requirements.lock
+      - run: python -m pytest -q
+        working-directory: ai-service
+
   build:
     name: Build & Test (JDK 17)
     runs-on: ubuntu-latest
