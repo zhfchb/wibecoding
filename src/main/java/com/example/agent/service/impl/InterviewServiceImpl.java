@@ -14,9 +14,6 @@ import com.example.agent.security.SecurityUtils;
 import com.example.agent.service.InterviewService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import dev.langchain4j.data.message.UserMessage;
-import dev.langchain4j.model.chat.request.ChatRequest;
-import dev.langchain4j.model.openai.OpenAiChatModel;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -45,7 +42,7 @@ public class InterviewServiceImpl implements InterviewService {
     private final CandidateResumeMapper candidateResumeMapper;
     private final MatchResultMapper matchResultMapper;
     private final InterviewQuestionMapper interviewQuestionMapper;
-    private final OpenAiChatModel openAiChatModel;
+    private final com.example.agent.service.AiGateway aiGateway;
     private final ObjectMapper objectMapper;
 
     @Override
@@ -153,9 +150,7 @@ public class InterviewServiceImpl implements InterviewService {
                 category 取值只能是：技术/项目/行为；difficulty 取值只能是：EASY/MEDIUM/HARD。
                 """);
 
-        String raw = openAiChatModel.chat(ChatRequest.builder()
-                        .messages(UserMessage.from(sb.toString())).build())
-                .aiMessage().text();
+        String raw = aiGateway.structured("interview", sb.toString());
         String json = raw == null ? "" : raw.trim();
         int left = json.indexOf('[');
         int right = json.lastIndexOf(']');

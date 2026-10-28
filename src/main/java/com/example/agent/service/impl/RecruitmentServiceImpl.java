@@ -21,9 +21,6 @@ import com.example.agent.service.RecruitmentService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import dev.langchain4j.model.chat.request.ChatRequest;
-import dev.langchain4j.data.message.UserMessage;
-import dev.langchain4j.model.openai.OpenAiChatModel;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -54,7 +51,7 @@ public class RecruitmentServiceImpl implements RecruitmentService {
     private final CandidateReportMapper candidateReportMapper;
     private final DocumentMapper documentMapper;
     private final KnowledgeService knowledgeService;
-    private final OpenAiChatModel openAiChatModel;
+    private final com.example.agent.service.AiGateway aiGateway;
     private final ObjectMapper objectMapper;
     private final com.example.agent.service.ResumeParser resumeParser;
 
@@ -333,9 +330,7 @@ public class RecruitmentServiceImpl implements RecruitmentService {
      * 调用 LLM 并把返回文本规整为 JSON 节点（剥掉 ```json 包裹等干扰）。
      */
     private JsonNode callLlmForJson(String prompt) {
-        String raw = openAiChatModel.chat(
-                        ChatRequest.builder().messages(UserMessage.from(prompt)).build())
-                .aiMessage().text();
+        String raw = aiGateway.structured("position", prompt);
         String json = stripToJson(raw);
         try {
             return objectMapper.readTree(json);

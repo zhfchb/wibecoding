@@ -14,9 +14,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import dev.langchain4j.data.message.UserMessage;
-import dev.langchain4j.model.chat.request.ChatRequest;
-import dev.langchain4j.model.openai.OpenAiChatModel;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -57,7 +54,7 @@ public class MatchServiceImpl implements MatchService {
     private final JobPositionMapper jobPositionMapper;
     private final CandidateResumeMapper candidateResumeMapper;
     private final MatchResultMapper matchResultMapper;
-    private final OpenAiChatModel openAiChatModel;
+    private final com.example.agent.service.AiGateway aiGateway;
     private final ObjectMapper objectMapper;
 
     @Override
@@ -340,9 +337,7 @@ public class MatchServiceImpl implements MatchService {
                 规则：score 为 0-100 整数，表示技能与岗位要求的语义匹配度（结合技能等价与深度经验综合判断）；hits/gaps 只保留必须技能相关项。
                 """);
 
-        String raw = openAiChatModel.chat(ChatRequest.builder()
-                        .messages(UserMessage.from(sb.toString())).build())
-                .aiMessage().text();
+        String raw = aiGateway.structured("match", sb.toString());
         // 批量返回的是 JSON 数组，手动定位 [ ] 主体
         String json = raw == null ? "" : raw.trim();
         int left = json.indexOf('[');

@@ -17,9 +17,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import dev.langchain4j.data.message.UserMessage;
-import dev.langchain4j.model.chat.request.ChatRequest;
-import dev.langchain4j.model.openai.OpenAiChatModel;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -59,7 +56,7 @@ public class ReportServiceImpl implements ReportService {
     private final CandidateResumeMapper candidateResumeMapper;
     private final MatchResultMapper matchResultMapper;
     private final CandidateReportMapper candidateReportMapper;
-    private final OpenAiChatModel openAiChatModel;
+    private final com.example.agent.service.AiGateway aiGateway;
     private final ObjectMapper objectMapper;
     private final RagProperties ragProperties;
 
@@ -201,9 +198,7 @@ public class ReportServiceImpl implements ReportService {
                 规则：finalRecommend 只能取 STRONG_YES/YES/NO（综合分≥85 且无关键缺失 → STRONG_YES；≥60 → YES；否则 NO）；薪资建议结合岗位预算、市场行情与候选人水平给出；reportMd 中引用市场行情时附来源链接。
                 """);
 
-        String raw = openAiChatModel.chat(ChatRequest.builder()
-                        .messages(UserMessage.from(sb.toString())).build())
-                .aiMessage().text();
+        String raw = aiGateway.structured("report", sb.toString());
         String json = raw == null ? "" : raw.trim();
         int left = json.indexOf('{');
         int right = json.lastIndexOf('}');
