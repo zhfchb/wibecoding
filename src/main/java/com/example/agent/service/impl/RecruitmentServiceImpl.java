@@ -56,6 +56,7 @@ public class RecruitmentServiceImpl implements RecruitmentService {
     private final KnowledgeService knowledgeService;
     private final OpenAiChatModel openAiChatModel;
     private final ObjectMapper objectMapper;
+    private final com.example.agent.service.ResumeParser resumeParser;
 
     // ==================== 岗位管理 ====================
 
@@ -229,7 +230,7 @@ public class RecruitmentServiceImpl implements RecruitmentService {
         entity.setCreatedAt(LocalDateTime.now());
 
         try {
-            JsonNode profile = callLlmForJson(buildResumePrompt(rawText));
+            JsonNode profile = resumeParser.parse(rawText);
             entity.setCandidateName(textOrNull(profile, "candidate_name"));
             entity.setEmail(textOrNull(profile, "email"));
             entity.setEducation(textOrNull(profile, "education"));
@@ -326,16 +327,6 @@ public class RecruitmentServiceImpl implements RecruitmentService {
             log.warn("JD LLM 抽取失败，使用兜底值: {}", e.getMessage());
         }
         return request;
-    }
-
-    private String buildResumePrompt(String resumeText) {
-        return "你是招聘助手。从以下简历文本中抽取候选人结构化信息，只返回一个 JSON 对象，"
-                + "不要任何解释文字、不要 markdown 代码块。字段定义：\n"
-                + "{\"candidate_name\":\"姓名\",\"skills\":[\"技能关键词，最多15个\"],"
-                + "\"years_exp\":工作年限整数,\"education\":\"最高学历\",\"last_company\":\"最近公司\","
-                + "\"email\":\"邮箱\"}\n"
-                + "规则：找不到的字段返回空字符串/空数组/0；不要返回电话号码等敏感联系方式。\n"
-                + "简历文本：\n" + truncate(resumeText, MAX_LLM_TEXT);
     }
 
     /**

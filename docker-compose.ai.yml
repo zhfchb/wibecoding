@@ -1,0 +1,22 @@
+# Overlay: docker compose -f docker-compose.local.yml -f docker-compose.ai.yml up -d --build
+services:
+  ai-service:
+    build: ./ai-service
+    environment:
+      AI_SERVICE_TOKEN: ${AI_SERVICE_TOKEN:?Set AI_SERVICE_TOKEN}
+      DEEPSEEK_CLIENT_API_KEY: ${DEEPSEEK_CLIENT_API_KEY:?Set DEEPSEEK_CLIENT_API_KEY}
+      DEEPSEEK_BASE_URL: ${AI_MODEL_BASE_URL:-https://api.deepseek.com/v1}
+      AI_MODEL: ${AI_MODEL:-deepseek-chat}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+  app:
+    environment:
+      AI_RESUME_PROVIDER: python
+      AI_SERVICE_BASE_URL: http://ai-service:8000
+      AI_SERVICE_TOKEN: ${AI_SERVICE_TOKEN:?Set AI_SERVICE_TOKEN}
+    depends_on:
+      ai-service:
+        condition: service_healthy
