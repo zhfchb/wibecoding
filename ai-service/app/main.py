@@ -84,3 +84,5 @@ def parse_resume(request: ResumeRequest, parser=Depends(get_parser)):
 
 from app.recruitment import router as recruitment_router
 app.include_router(recruitment_router)
+from app.chat import router as chat_router
+app.include_router(chat_router)
