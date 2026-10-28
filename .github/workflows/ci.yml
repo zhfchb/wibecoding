@@ -39,11 +39,19 @@ jobs:
       - name: Compile
         run: mvn clean compile -B -ntp
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install AI service for cross-service tests
+        run: pip install -r ai-service/requirements.lock
+
       - name: Test
         run: mvn test -B -ntp
         # 测试用 test profile,H2 内存库 + mock LLM,无需外部服务
         env:
           SPRING_PROFILES_ACTIVE: test
+          RUN_AI_E2E: 'true'
+          AI_TEST_PYTHON: python
 
       - name: Package (skip tests)
         run: mvn package -DskipTests -B -ntp
@@ -55,3 +63,15 @@ jobs:
           path: target/*.jar
           retention-days: 7
           if-no-files-found: error
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm ci --ignore-scripts
+        working-directory: frontend
+      - run: npm run build
+        working-directory: frontend

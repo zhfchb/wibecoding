@@ -1,3 +1,5 @@
+> 2026-10-28：本地栈已增加 Python AI 服务，必须配置 AI_SERVICE_TOKEN。当前启动步骤以 README 和 doc/LangChain分阶段迁移.md 为准，以下保留原容器初始化说明。
+
 # 本地容器验证
 
 使用独立 Compose 项目 `wibecoding-local`、独立数据卷和本机端口 18080。

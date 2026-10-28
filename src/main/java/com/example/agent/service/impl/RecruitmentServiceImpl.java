@@ -16,8 +16,10 @@ import com.example.agent.mapper.MatchResultMapper;
 import com.example.agent.mapper.CandidateReportMapper;
 import com.example.agent.rag.PdfTextExtractor;
 import com.example.agent.security.SecurityUtils;
+import com.example.agent.service.AiGateway;
 import com.example.agent.service.KnowledgeService;
 import com.example.agent.service.RecruitmentService;
+import com.example.agent.service.ResumeParser;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -51,9 +53,9 @@ public class RecruitmentServiceImpl implements RecruitmentService {
     private final CandidateReportMapper candidateReportMapper;
     private final DocumentMapper documentMapper;
     private final KnowledgeService knowledgeService;
-    private final com.example.agent.service.AiGateway aiGateway;
+    private final AiGateway aiGateway;
     private final ObjectMapper objectMapper;
-    private final com.example.agent.service.ResumeParser resumeParser;
+    private final ResumeParser resumeParser;
 
     // ==================== 岗位管理 ====================
 

@@ -17,11 +17,6 @@ mybatis-plus:
   configuration:
     map-underscore-to-camel-case: true
 
-deepseek:
-  client:
-    api-key: test-dummy-key
-    base-url: http://localhost:9999
-
 rag:
   embedding:
     provider: hash
@@ -35,3 +30,7 @@ chat:
     store-type: memory   # memory（测试）/ redis（生产）
     ttl-seconds: 3600
     max-history: 20
+
+ai:
+  service:
+    token: test-service-token

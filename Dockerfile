@@ -36,7 +36,7 @@ EXPOSE 8080
 
 # 健康检查(可选,需配合 Spring Boot Actuator 或自定义 /health)
 HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
-    CMD wget -qO- http://localhost:8080/api/v1/auth/login || exit 1
+    CMD wget -qO- http://localhost:8080/health || exit 1
 
 # 生产 profile,环境变量覆盖敏感配置
 ENTRYPOINT ["java", "-jar", "/app/app.jar", "--spring.profiles.active=prod"]

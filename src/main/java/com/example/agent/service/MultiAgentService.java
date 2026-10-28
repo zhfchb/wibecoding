@@ -38,6 +38,7 @@ public interface MultiAgentService {
      * @return 审批后的任务快照（状态应为 COMPLETED）
      */
     MultiAgentTask approve(String taskId);
+    default MultiAgentTask approve(String taskId, Integer revision) { return approve(taskId); }
 
     /**
      * 人工审批：拒绝，携带反馈，触发重新生成。
@@ -46,4 +47,5 @@ public interface MultiAgentService {
      * @return 审批后的任务快照（状态应为 AWAITING_REVIEW，除非达到 maxRejects 终止失败）
      */
     MultiAgentTask reject(String taskId, String feedback);
+    default MultiAgentTask reject(String taskId, String feedback, Integer revision) { return reject(taskId, feedback); }
 }

@@ -1,12 +1,10 @@
 """Internal AI API. Java owns authorization, file parsing and persistence."""
-import os
-import secrets
 from functools import lru_cache
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, ConfigDict, Field
+from app.runtime import authorize, get_model
 
 
 class ResumeRequest(BaseModel):
@@ -24,27 +22,6 @@ class ResumeProfile(BaseModel):
     email: str | None = None
 
 
-def authorize(x_ai_service_token: str = Header(default="")) -> None:
-    token = os.environ.get("AI_SERVICE_TOKEN", "")
-    if not token:
-        raise HTTPException(503, "Service authentication is not configured")
-    if not secrets.compare_digest(x_ai_service_token, token):
-        raise HTTPException(401, "Invalid service token")
-
-
-@lru_cache
-def get_model():
-    key = os.environ.get("DEEPSEEK_CLIENT_API_KEY", "")
-    if not key:
-        raise HTTPException(503, "Model is not configured")
-    return ChatOpenAI(
-        model=os.environ.get("AI_MODEL", "deepseek-chat"),
-        api_key=key,
-        base_url=os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1"),
-        temperature=0,
-        timeout=45,
-        max_retries=0,
-    )
 
 
 @lru_cache
@@ -88,3 +65,5 @@ from app.chat import router as chat_router
 app.include_router(chat_router)
 from app.workflows import router as workflows_router
 app.include_router(workflows_router)
+from app.vectors import router as vectors_router
+app.include_router(vectors_router)

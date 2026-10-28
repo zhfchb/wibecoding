@@ -9,6 +9,12 @@ services:
       AI_MODEL: ${AI_MODEL:-deepseek-chat}
       JAVA_SERVICE_URL: http://app:8080
       TAVILY_API_KEY: ${TAVILY_API_KEY:-}
+      RAG_EMBEDDING_API_KEY: ${RAG_EMBEDDING_API_KEY:-}
+      RAG_EMBEDDING_BASE_URL: ${RAG_EMBEDDING_BASE_URL:-https://api.siliconflow.cn/v1}
+      RAG_EMBEDDING_MODEL: ${RAG_EMBEDDING_MODEL:-BAAI/bge-m3}
+      RAG_RERANK_API_KEY: ${RAG_RERANK_API_KEY:-}
+      RAG_RERANK_BASE_URL: ${RAG_RERANK_BASE_URL:-https://api.siliconflow.cn/v1}
+      RAG_RERANK_MODEL: ${RAG_RERANK_MODEL:-BAAI/bge-reranker-v2-m3}
       AI_CHECKPOINT_DB: /service/data/workflows.sqlite
     volumes:
       - ai_workflows:/service/data
@@ -19,7 +25,6 @@ services:
       retries: 5
   app:
     environment:
-      AI_RESUME_PROVIDER: python
       AI_SERVICE_BASE_URL: http://ai-service:8000
       AI_SERVICE_TOKEN: ${AI_SERVICE_TOKEN:?Set AI_SERVICE_TOKEN}
     depends_on:

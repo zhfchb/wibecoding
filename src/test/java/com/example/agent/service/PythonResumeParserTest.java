@@ -48,7 +48,7 @@ class PythonResumeParserTest {
         try {
             var parser = new PythonResumeParser("http://127.0.0.1:" + server.getAddress().getPort(), "test-token");
             assertThatThrownBy(() -> parser.parse("Java"))
-                    .isInstanceOf(IllegalStateException.class).hasMessageNotContaining("private");
+                    .isInstanceOf(com.example.agent.exception.AiServiceException.class).hasMessageNotContaining("private");
         } finally {
             server.stop(0);
         }

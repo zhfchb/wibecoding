@@ -38,3 +38,5 @@ __pycache__/
 *.pyc
 .env
 ai-service/data/
+**/node_modules/
+**/dist/
