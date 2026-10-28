@@ -6,7 +6,6 @@ import com.example.agent.entity.JobPositionEntity;
 import com.example.agent.mapper.*;
 import com.example.agent.service.impl.RecruitmentServiceImpl;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import dev.langchain4j.model.openai.OpenAiChatModel;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.mock.web.MockMultipartFile;
@@ -29,7 +28,7 @@ class RecruitmentResumeParsingTest {
                 .thenThrow(new IllegalStateException("AI service unavailable"));
         var service = new RecruitmentServiceImpl(positions, resumes, mock(MatchResultMapper.class),
                 mock(InterviewQuestionMapper.class), mock(CandidateReportMapper.class), mock(DocumentMapper.class),
-                knowledge, mock(OpenAiChatModel.class), json, parser);
+                knowledge, mock(AiGateway.class), json, parser);
         var file = new MockMultipartFile("file", "resume.md", "text/plain", "Java".getBytes());
         service.uploadResumes(1L, List.of(file, file));
         var captured = ArgumentCaptor.forClass(CandidateResumeEntity.class);

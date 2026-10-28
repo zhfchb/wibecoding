@@ -1,6 +1,6 @@
 import pytest
 from fastapi.testclient import TestClient
-from app.main import app, get_parser
+from app.main import app, get_parser, get_model
 
 
 class Parser:
@@ -61,6 +61,7 @@ def test_missing_model_key(monkeypatch):
     from fastapi import HTTPException
     monkeypatch.delenv("DEEPSEEK_CLIENT_API_KEY", raising=False)
     get_parser.cache_clear()
+    get_model.cache_clear()
     with pytest.raises(HTTPException) as error:
         get_parser()
     assert error.value.status_code == 503
@@ -102,12 +103,14 @@ def test_real_langchain_pipeline_with_mock_model_http(monkeypatch):
     monkeypatch.setenv("DEEPSEEK_CLIENT_API_KEY", "test-key")
     monkeypatch.setenv("DEEPSEEK_BASE_URL", f"http://127.0.0.1:{server.server_port}/v1")
     get_parser.cache_clear()
+    get_model.cache_clear()
     try:
         profile = get_parser().invoke({"text": "Java three years"})
         assert profile.years_exp == 3
         assert profile.skills == ["Java"]
     finally:
         get_parser.cache_clear()
+        get_model.cache_clear()
         server.shutdown()
         server.server_close()
         thread.join()
