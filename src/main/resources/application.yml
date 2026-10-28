@@ -26,11 +26,6 @@ mybatis-plus:
       logic-delete-value: 1
       logic-not-delete-value: 0
 
-deepseek:
-  client:
-    api-key: ""   # 开发环境通过 application-dev.yml 覆盖；生产环境通过 DEEPSEEK_CLIENT_API_KEY 环境变量覆盖
-    base-url: https://api.deepseek.com
-
 # JWT 配置(签名密钥与过期时间)
 jwt:
   secret: "wibecoding-dev-secret-key-please-change-in-production-at-least-32-chars"
@@ -102,8 +97,6 @@ springdoc:
     tags-sorter: alpha          # 分组按字母排序
   packages-to-scan: com.example.agent.controller
 ai:
-  resume:
-    provider: ${AI_RESUME_PROVIDER:java}
   service:
     base-url: ${AI_SERVICE_BASE_URL:http://localhost:8000}
     token: ${AI_SERVICE_TOKEN:}

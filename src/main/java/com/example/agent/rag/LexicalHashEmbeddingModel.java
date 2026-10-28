@@ -1,9 +1,5 @@
 package com.example.agent.rag;
 
-import dev.langchain4j.data.embedding.Embedding;
-import dev.langchain4j.data.segment.TextSegment;
-import dev.langchain4j.model.embedding.EmbeddingModel;
-import dev.langchain4j.model.output.Response;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -27,20 +23,12 @@ public class LexicalHashEmbeddingModel implements EmbeddingModel {
     }
 
     @Override
-    public Response<List<Embedding>> embedAll(List<TextSegment> textSegments) {
-        List<Embedding> embeddings = new ArrayList<>(textSegments.size());
-        for (TextSegment segment : textSegments) {
-            embeddings.add(Embedding.from(embedText(segment.text())));
-        }
-        return Response.from(embeddings);
-    }
-
-    @Override
     public int dimension() {
         return dimension;
     }
 
-    private float[] embedText(String text) {
+    @Override
+    public float[] embed(String text) {
         float[] vector = new float[dimension];
         Map<String, Integer> counts = new HashMap<>();
         for (String token : tokenize(text)) {

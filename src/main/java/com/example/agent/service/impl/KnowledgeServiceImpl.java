@@ -14,16 +14,13 @@ import com.example.agent.mapper.DocumentMapper;
 import com.example.agent.rag.ChunkRecord;
 import com.example.agent.rag.DocumentChunker;
 import com.example.agent.rag.PdfTextExtractor;
+import com.example.agent.rag.EmbeddingModel;
 import com.example.agent.rag.SparseEmbedding;
 import com.example.agent.rag.SparseEmbeddingModel;
 import com.example.agent.rag.VectorStore;
 import com.example.agent.security.SecurityUtils;
 import com.example.agent.service.KnowledgeService;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import dev.langchain4j.data.document.Metadata;
-import dev.langchain4j.data.embedding.Embedding;
-import dev.langchain4j.data.segment.TextSegment;
-import dev.langchain4j.model.embedding.EmbeddingModel;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -82,20 +79,14 @@ public class KnowledgeServiceImpl implements KnowledgeService {
 
         String documentId = UUID.randomUUID().toString();
         Long userId = SecurityUtils.getCurrentUserId();
-        List<TextSegment> segments = chunks.stream()
-                .map(text -> TextSegment.from(
-                        text,
-                        new Metadata()
-                                .put("document_id", documentId)
-                                .put("file_name", fileName)))
-                .toList();
-        List<Embedding> embeddings = embeddingModel.embedAll(segments).content();
+        List<String> segments = chunks;
+        List<float[]> embeddings = embeddingModel.embedAll(segments);
 
         for (int i = 0; i < segments.size(); i++) {
-            String chunkText = segments.get(i).text();
+            String chunkText = segments.get(i);
             SparseEmbedding sparse = sparseEmbeddingModel.embed(chunkText);
             String chunkId = UUID.randomUUID().toString();
-            float[] denseVector = embeddings.get(i).vector();
+            float[] denseVector = embeddings.get(i);
             ChunkRecord chunk = new ChunkRecord(
                     chunkId,
                     documentId,

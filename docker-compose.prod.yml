@@ -16,17 +16,36 @@ services:
     env_file:
       - .env.prod
     environment:
+      - AI_SERVICE_BASE_URL=http://ai-service:8000
       - MYSQL_HOST=mysql
       - REDIS_HOST=redis
       - QDRANT_URL=http://qdrant:6333
       - SPRING_PROFILES_ACTIVE=prod
     depends_on:
+      ai-service:
+        condition: service_healthy
       mysql:
         condition: service_healthy
       redis:
         condition: service_started
       qdrant:
         condition: service_started
+    restart: unless-stopped
+
+  ai-service:
+    build: ./ai-service
+    env_file:
+      - .env.prod
+    environment:
+      JAVA_SERVICE_URL: http://app:8080
+      AI_CHECKPOINT_DB: /service/data/workflows.sqlite
+    volumes:
+      - ai_workflows:/service/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
     restart: unless-stopped
 
   qdrant:
@@ -43,10 +62,10 @@ services:
     image: mysql:8.0
     container_name: wibecoding-mysql
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:root123}
-      MYSQL_DATABASE: ${MYSQL_DATABASE:agent}
-      MYSQL_USER: ${MYSQL_USERNAME:agent}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:agent123}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root123}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-agent}
+      MYSQL_USER: ${MYSQL_USERNAME:-agent}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-agent123}
     ports:
       - "3306:3306"
     volumes:
@@ -55,7 +74,7 @@ services:
       - ./src/main/resources/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
       - ./scripts/init-users.sql:/docker-entrypoint-initdb.d/02-init-users.sql:ro
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uagent", "-pagent123"]
+      test: ["CMD-SHELL", "MYSQL_PWD=$$MYSQL_PASSWORD mysqladmin ping -h localhost -u$$MYSQL_USER --silent"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -72,6 +91,7 @@ services:
     restart: unless-stopped
 
 volumes:
+  ai_workflows:
   qdrant_storage:
   mysql_data:
   redis_data:

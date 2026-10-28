@@ -1,8 +1,6 @@
 package com.example.agent.rag;
 
-import dev.langchain4j.data.embedding.Embedding;
-import dev.langchain4j.model.embedding.EmbeddingModel;
-import dev.langchain4j.model.openai.OpenAiEmbeddingModel;
+import com.example.agent.rag.EmbeddingModel;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 
@@ -39,17 +37,11 @@ class RagEvaluationTest {
 
     /** 真实 Embedding（BGE-M3 via 硅基流动），需要环境变量门控，无 key 自动跳过。 */
     @Test
-    @EnabledIfEnvironmentVariable(named = "RAG_EMBEDDING_API_KEY", matches = ".+")
+    @EnabledIfEnvironmentVariable(named = "RUN_REAL_AI_EVALUATION", matches = "true")
     void evaluateRealEmbeddingQuality() {
-        String baseUrl = System.getenv().getOrDefault("RAG_EMBEDDING_BASE_URL", "https://api.siliconflow.cn/v1");
-        String modelName = System.getenv().getOrDefault("RAG_EMBEDDING_MODEL", "BAAI/bge-m3");
-        String apiKey = System.getenv("RAG_EMBEDDING_API_KEY");
-
-        EmbeddingModel real = OpenAiEmbeddingModel.builder()
-                .baseUrl(baseUrl)
-                .apiKey(apiKey)
-                .modelName(modelName)
-                .build();
+        EmbeddingModel real = new PythonEmbeddingModel(new com.example.agent.service.AiGateway(
+                System.getenv().getOrDefault("AI_SERVICE_BASE_URL", "http://localhost:8000"),
+                System.getenv().getOrDefault("AI_SERVICE_TOKEN", "")), DIMENSION);
 
         EvalResult realResult = runEvaluation(real, "BGE-M3 (real)");
         EvalResult baselineResult = runEvaluation(new LexicalHashEmbeddingModel(DIMENSION), "LexicalHash (baseline)");
@@ -79,9 +71,9 @@ class RagEvaluationTest {
         InMemoryVectorStore store = new InMemoryVectorStore();
         List<EvalDoc> docs = buildCorpus();
         for (EvalDoc doc : docs) {
-            Embedding emb = model.embed(doc.text()).content();
+            float[] emb = model.embed(doc.text());
             store.add(new ChunkRecord(UUID.randomUUID().toString(), doc.id(), doc.text(), doc.title(), 0,
-                    emb.vector(), SparseEmbedding.empty(), null));
+                    emb, SparseEmbedding.empty(), null));
         }
 
         List<EvalQuery> queries = buildQueries();
@@ -94,8 +86,8 @@ class RagEvaluationTest {
         report.add("-----------------------------------");
 
         for (EvalQuery query : queries) {
-            Embedding queryEmb = model.embed(query.question()).content();
-            List<VectorMatch> matches = store.search(queryEmb.vector(), TOP_K, 0.0, null);
+            float[] queryEmb = model.embed(query.question());
+            List<VectorMatch> matches = store.search(queryEmb, TOP_K, 0.0, null);
 
             int rank = -1;
             for (int i = 0; i < matches.size(); i++) {

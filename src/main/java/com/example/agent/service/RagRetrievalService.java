@@ -2,7 +2,6 @@ package com.example.agent.service;
 
 import com.example.agent.config.RagProperties;
 import com.example.agent.rag.*;
-import dev.langchain4j.model.embedding.EmbeddingModel;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import java.util.List;
@@ -19,7 +18,7 @@ public class RagRetrievalService {
 
     public List<VectorMatch> retrieve(String query, Long ownerId) {
         if (ownerId == null || ownerId <= 0) throw new IllegalArgumentException("ownerId required");
-        float[] dense = embeddingModel.embed(query).content().vector();
+        float[] dense = embeddingModel.embed(query);
         var hybrid = properties.hybrid();
         var rerank = properties.rerank();
         boolean enabled = hybrid != null && hybrid.enabled();

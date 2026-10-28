@@ -3,8 +3,7 @@ import json
 import math
 import operator
 import os
-from datetime import datetime
-from zoneinfo import ZoneInfo
+from datetime import datetime, timezone, timedelta
 from typing import Literal
 
 import httpx
@@ -13,7 +12,7 @@ from fastapi.responses import StreamingResponse
 from langchain.agents import create_agent
 from langchain_core.tools import tool
 from pydantic import BaseModel, Field
-from app.main import authorize, get_model
+from app.runtime import authorize, get_model
 
 router = APIRouter(dependencies=[Depends(authorize)])
 
@@ -21,7 +20,7 @@ router = APIRouter(dependencies=[Depends(authorize)])
 @tool
 def current_time() -> str:
     """Return current date and time in Asia/Shanghai."""
-    return datetime.now(ZoneInfo("Asia/Shanghai")).isoformat()
+    return datetime.now(timezone(timedelta(hours=8))).isoformat()
 
 
 @tool
@@ -127,6 +126,13 @@ def chat(request: ChatRequest, model=Depends(get_model)):
 def agent(request: ChatRequest, model=Depends(get_model)):
     try: return {"answer": agent_answer(model, request.message)}
     except Exception: raise HTTPException(502, "Agent execution failed") from None
+
+
+@router.post("/internal/v1/search")
+def search(request: ChatRequest):
+    value = web_search.invoke({"query": request.message})
+    try: return {"results": json.loads(value)}
+    except ValueError: return {"results": []}
 
 
 @router.post("/internal/v1/rag")

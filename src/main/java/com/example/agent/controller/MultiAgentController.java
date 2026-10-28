@@ -78,9 +78,9 @@ public class MultiAgentController {
     @Operation(summary = "审批通过",
             description = "人工审批通过，图 resume 到 END，最终答案即草稿内容。任务状态变为 COMPLETED。")
     @PostMapping("/tasks/{taskId}/approve")
-    public ResponseEntity<?> approve(@PathVariable String taskId) {
+    public ResponseEntity<?> approve(@PathVariable String taskId, @RequestBody(required=false) Map<String, Object> body) {
         try {
-            MultiAgentTask task = multiAgentService.approve(taskId);
+            MultiAgentTask task = multiAgentService.approve(taskId, revision(body));
             return ResponseEntity.ok(task);
         } catch (IllegalArgumentException e) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
@@ -96,10 +96,10 @@ public class MultiAgentController {
                     "达到 maxRejects 后终止失败。任务状态回到 AWAITING_REVIEW 或 COMPLETED。")
     @PostMapping("/tasks/{taskId}/reject")
     public ResponseEntity<?> reject(@PathVariable String taskId,
-                                    @RequestBody(required = false) Map<String, String> body) {
+                                    @RequestBody(required = false) Map<String, Object> body) {
         try {
-            String feedback = body != null ? body.getOrDefault("feedback", "") : "";
-            MultiAgentTask task = multiAgentService.reject(taskId, feedback);
+            String feedback = body != null ? String.valueOf(body.getOrDefault("feedback", "")) : "";
+            MultiAgentTask task = multiAgentService.reject(taskId, feedback, revision(body));
             return ResponseEntity.ok(task);
         } catch (IllegalArgumentException e) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
@@ -108,5 +108,9 @@ public class MultiAgentController {
             return ResponseEntity.status(HttpStatus.CONFLICT)
                     .body(Map.of("error", e.getMessage()));
         }
+    }
+
+    private Integer revision(Map<String, Object> body) {
+        return body != null && body.get("expectedRejectCount") instanceof Number number ? number.intValue() : null;
     }
 }

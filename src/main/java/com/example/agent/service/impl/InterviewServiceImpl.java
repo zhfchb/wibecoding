@@ -11,6 +11,7 @@ import com.example.agent.mapper.InterviewQuestionMapper;
 import com.example.agent.mapper.JobPositionMapper;
 import com.example.agent.mapper.MatchResultMapper;
 import com.example.agent.security.SecurityUtils;
+import com.example.agent.service.AiGateway;
 import com.example.agent.service.InterviewService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -42,7 +43,7 @@ public class InterviewServiceImpl implements InterviewService {
     private final CandidateResumeMapper candidateResumeMapper;
     private final MatchResultMapper matchResultMapper;
     private final InterviewQuestionMapper interviewQuestionMapper;
-    private final com.example.agent.service.AiGateway aiGateway;
+    private final AiGateway aiGateway;
     private final ObjectMapper objectMapper;
 
     @Override

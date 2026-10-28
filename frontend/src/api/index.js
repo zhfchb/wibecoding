@@ -108,10 +108,10 @@ export const agentApi = {
     api.get(`/agent/tasks/${taskId}`),
   listPending: () =>
     api.get('/agent/tasks/pending'),
-  approve: (taskId) =>
-    api.post(`/agent/tasks/${taskId}/approve`),
-  reject: (taskId, feedback) =>
-    api.post(`/agent/tasks/${taskId}/reject`, { feedback }),
+  approve: (taskId, expectedRejectCount) =>
+    api.post(`/agent/tasks/${taskId}/approve`, { expectedRejectCount }),
+  reject: (taskId, feedback, expectedRejectCount) =>
+    api.post(`/agent/tasks/${taskId}/reject`, { feedback, expectedRejectCount }),
 }
 
 // ======== 知识库 API ========

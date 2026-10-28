@@ -3,7 +3,6 @@ package com.example.agent.service.impl;
 import com.example.agent.service.ResumeParser;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
@@ -11,7 +10,6 @@ import org.springframework.web.client.RestClient;
 import java.util.Map;
 
 @Component
-@ConditionalOnProperty(name = "ai.resume.provider", havingValue = "python")
 public class PythonResumeParser implements ResumeParser {
     private final RestClient client;
 
@@ -39,7 +37,7 @@ public class PythonResumeParser implements ResumeParser {
             }
             return result;
         } catch (Exception e) {
-            throw new IllegalStateException("Python resume extraction failed; check AI service availability");
+            throw new com.example.agent.exception.AiServiceException("Python resume extraction failed; check AI service availability");
         }
     }
 }

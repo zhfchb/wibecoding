@@ -31,11 +31,13 @@ public class MultiAgentServiceImpl implements MultiAgentService {
         return mapper.convertValue(gateway.post("/internal/v1/tasks/pending", Map.of("ownerId", owner())),
             new com.fasterxml.jackson.core.type.TypeReference<List<MultiAgentTask>>() {});
     }
-    public MultiAgentTask approve(String taskId) { return review(taskId, true, ""); }
-    public MultiAgentTask reject(String taskId, String feedback) { return review(taskId, false, feedback == null ? "" : feedback); }
-    private MultiAgentTask review(String taskId, boolean approved, String feedback) {
+    public MultiAgentTask approve(String taskId) { return approve(taskId, null); }
+    public MultiAgentTask reject(String taskId, String feedback) { return reject(taskId, feedback, null); }
+    public MultiAgentTask approve(String taskId, Integer revision) { return review(taskId, true, "", revision); }
+    public MultiAgentTask reject(String taskId, String feedback, Integer revision) { return review(taskId, false, feedback == null ? "" : feedback, revision); }
+    private MultiAgentTask review(String taskId, boolean approved, String feedback, Integer revision) {
         var current = getTask(taskId);
         return mapper.convertValue(gateway.post("/internal/v1/tasks/review", Map.of("taskId", taskId, "ownerId", owner(),
-            "approved", approved, "feedback", feedback, "expectedRejectCount", current.rejectCount())), MultiAgentTask.class);
+            "approved", approved, "feedback", feedback, "expectedRejectCount", revision != null ? revision : current.rejectCount())), MultiAgentTask.class);
     }
 }

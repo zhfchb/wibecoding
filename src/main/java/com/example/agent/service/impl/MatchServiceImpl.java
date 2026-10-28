@@ -9,6 +9,7 @@ import com.example.agent.mapper.CandidateResumeMapper;
 import com.example.agent.mapper.JobPositionMapper;
 import com.example.agent.mapper.MatchResultMapper;
 import com.example.agent.security.SecurityUtils;
+import com.example.agent.service.AiGateway;
 import com.example.agent.service.MatchService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -54,7 +55,7 @@ public class MatchServiceImpl implements MatchService {
     private final JobPositionMapper jobPositionMapper;
     private final CandidateResumeMapper candidateResumeMapper;
     private final MatchResultMapper matchResultMapper;
-    private final com.example.agent.service.AiGateway aiGateway;
+    private final AiGateway aiGateway;
     private final ObjectMapper objectMapper;
 
     @Override

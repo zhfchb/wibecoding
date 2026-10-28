@@ -66,7 +66,7 @@ export default function AgentPage() {
 
   const handleApprove = async (taskId) => {
     try {
-      await agentApi.approve(taskId)
+      await agentApi.approve(taskId, tasks.find(t => t.taskId === taskId)?.rejectCount)
       message.success('已审批通过')
       await loadPending()
     } catch (err) {
@@ -77,8 +77,9 @@ export default function AgentPage() {
   const handleReject = async () => {
     const { feedback } = await form.validateFields()
     try {
-      await agentApi.reject(rejectModal.taskId, feedback || '')
-      message.success('已拒绝并反馈，触发重新生成')
+      const resp = await agentApi.reject(rejectModal.taskId, feedback || '', tasks.find(t => t.taskId === rejectModal.taskId)?.rejectCount)
+      if (resp.data?.status === 'FAILED') message.warning('已达到重写上限，任务已终止')
+      else message.success('已拒绝并反馈，触发重新生成')
       setRejectModal({ open: false, taskId: null })
       form.resetFields()
       await loadPending()

@@ -12,6 +12,7 @@ import com.example.agent.mapper.CandidateResumeMapper;
 import com.example.agent.mapper.JobPositionMapper;
 import com.example.agent.mapper.MatchResultMapper;
 import com.example.agent.security.SecurityUtils;
+import com.example.agent.service.AiGateway;
 import com.example.agent.service.ReportService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -23,12 +24,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
-import java.math.BigDecimal;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -44,8 +39,6 @@ import java.util.Locale;
 @RequiredArgsConstructor
 public class ReportServiceImpl implements ReportService {
 
-    private static final String TAVILY_API = "https://api.tavily.com/search";
-
     /** 送入 LLM 的简历原文最大长度 */
     private static final int MAX_RESUME_TEXT = 3000;
 
@@ -56,7 +49,7 @@ public class ReportServiceImpl implements ReportService {
     private final CandidateResumeMapper candidateResumeMapper;
     private final MatchResultMapper matchResultMapper;
     private final CandidateReportMapper candidateReportMapper;
-    private final com.example.agent.service.AiGateway aiGateway;
+    private final AiGateway aiGateway;
     private final ObjectMapper objectMapper;
     private final RagProperties ragProperties;
 
@@ -227,48 +220,20 @@ public class ReportServiceImpl implements ReportService {
      * 搜索未启用或失败时返回空列表，不阻断报告生成。
      */
     private List<CandidateReportResponse.MarketRef> searchMarket(String title, String city) {
-        RagProperties.WebSearch config = ragProperties.webSearch();
-        if (config == null || !config.enabled() || !StringUtils.hasText(config.apiKey())
-                || !StringUtils.hasText(title)) {
-            return List.of();
-        }
-        String query = (StringUtils.hasText(city) ? city + " " : "") + title + " 薪资 行情";
+        var config = ragProperties.webSearch();
+        if (config == null || !config.enabled() || !StringUtils.hasText(title)) return List.of();
         try {
-            ObjectNode body = objectMapper.createObjectNode();
-            body.put("api_key", config.apiKey());
-            body.put("query", query);
-            body.put("max_results", config.maxResults());
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(TAVILY_API))
-                    .header("Content-Type", "application/json")
-                    .timeout(Duration.ofSeconds(15))
-                    .POST(HttpRequest.BodyPublishers.ofString(body.toString()))
-                    .build();
-            HttpResponse<String> response = HttpClient.newBuilder()
-                    .connectTimeout(Duration.ofSeconds(10))
-                    .build()
-                    .send(request, HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() != 200) {
-                log.warn("市场行情搜索返回非 200: status={}", response.statusCode());
-                return List.of();
-            }
+            var result = aiGateway.post("/internal/v1/search", java.util.Map.of("message",
+                (city == null ? "" : city + " ") + title + " 薪资 行情"));
             List<CandidateReportResponse.MarketRef> refs = new ArrayList<>();
-            JsonNode results = objectMapper.readTree(response.body()).path("results");
-            if (results.isArray()) {
-                for (JsonNode item : results) {
-                    String url = item.path("url").asText("");
-                    String resultTitle = item.path("title").asText("");
-                    if (StringUtils.hasText(url) && refs.size() < MAX_MARKET_REFS) {
-                        refs.add(new CandidateReportResponse.MarketRef(
-                                StringUtils.hasText(resultTitle) ? resultTitle : url, url));
-                    }
+            for (var item : result.path("results")) {
+                String url = item.path("url").asText();
+                if ((url.startsWith("https://") || url.startsWith("http://")) && refs.size() < MAX_MARKET_REFS) {
+                    refs.add(new CandidateReportResponse.MarketRef(item.path("title").asText(url), url));
                 }
             }
             return refs;
-        } catch (Exception e) {
-            log.warn("市场行情搜索失败(不阻断报告): {}", e.getMessage());
-            return List.of();
-        }
+        } catch (Exception e) { return List.of(); }
     }
 
     private String toMarketRefJson(List<CandidateReportResponse.MarketRef> refs) {

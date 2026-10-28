@@ -3,7 +3,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, ConfigDict
 from langchain_core.prompts import ChatPromptTemplate
 from fastapi import APIRouter, Depends, HTTPException
-from app.main import authorize, get_model
+from app.runtime import authorize, get_model
 
 
 class GenerateRequest(BaseModel):
