@@ -37,3 +37,4 @@ __pycache__/
 .pytest_cache/
 *.pyc
 .env
+ai-service/data/

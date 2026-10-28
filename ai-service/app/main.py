@@ -86,3 +86,5 @@ from app.recruitment import router as recruitment_router
 app.include_router(recruitment_router)
 from app.chat import router as chat_router
 app.include_router(chat_router)
+from app.workflows import router as workflows_router
+app.include_router(workflows_router)

@@ -93,7 +93,7 @@ public class MultiAgentController {
 
     @Operation(summary = "审批拒绝",
             description = "人工审批拒绝，携带反馈，触发生成 Agent 重写草稿。" +
-                    "达到 maxRejects 后强制通过。任务状态回到 AWAITING_REVIEW 或 COMPLETED。")
+                    "达到 maxRejects 后终止失败。任务状态回到 AWAITING_REVIEW 或 COMPLETED。")
     @PostMapping("/tasks/{taskId}/reject")
     public ResponseEntity<?> reject(@PathVariable String taskId,
                                     @RequestBody(required = false) Map<String, String> body) {

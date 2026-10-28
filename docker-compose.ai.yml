@@ -9,6 +9,9 @@ services:
       AI_MODEL: ${AI_MODEL:-deepseek-chat}
       JAVA_SERVICE_URL: http://app:8080
       TAVILY_API_KEY: ${TAVILY_API_KEY:-}
+      AI_CHECKPOINT_DB: /service/data/workflows.sqlite
+    volumes:
+      - ai_workflows:/service/data
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 10s
@@ -22,3 +25,5 @@ services:
     depends_on:
       ai-service:
         condition: service_healthy
+volumes:
+  ai_workflows:
