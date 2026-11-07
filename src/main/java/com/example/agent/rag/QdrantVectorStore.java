@@ -89,13 +89,13 @@ public class QdrantVectorStore implements VectorStore {
                     "limit", topK,
                     "score_threshold", minScore);
             Map<String, Object> sparsePrefetch = Map.of(
-                    "query", Map.of(SPARSE_NAME, Map.of(
+                    "query", Map.of(
                             "indices", toIntList(sparseVector.indices()),
-                            "values", toFloatList(sparseVector.values()))),
+                            "values", toFloatList(sparseVector.values())),
                     "using", SPARSE_NAME,
                     "limit", topK);
             body.put("prefetch", List.of(densePrefetch, sparsePrefetch));
-            body.put("fusion", Map.of("rrf", Map.of("k", rrfK)));
+            body.put("query", Map.of("rrf", Map.of("k", rrfK)));
             body.put("limit", topK);
             body.put("with_payload", true);
         }
@@ -114,7 +114,10 @@ public class QdrantVectorStore implements VectorStore {
                 .retrieve()
                 .body(JsonNode.class);
 
-        return parseQueryResult(root, minScore, topK);
+        // RRF scores are rank-fusion values, not cosine similarities. The
+        // cosine threshold was already applied to dense prefetch above.
+        boolean hybrid = sparseVector != null && !sparseVector.isEmpty();
+        return parseQueryResult(root, hybrid ? 0.0 : minScore, topK);
     }
 
     @Override

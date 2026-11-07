@@ -40,3 +40,9 @@ __pycache__/
 ai-service/data/
 **/node_modules/
 **/dist/
+
+# Local UI review screenshots
+outputs/ui-review/
+local-data/
+demo-data/local/
+outputs/logs/

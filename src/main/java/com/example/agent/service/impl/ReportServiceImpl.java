@@ -10,7 +10,6 @@ import com.example.agent.entity.MatchResultEntity;
 import com.example.agent.mapper.CandidateReportMapper;
 import com.example.agent.mapper.CandidateResumeMapper;
 import com.example.agent.mapper.JobPositionMapper;
-import com.example.agent.mapper.MatchResultMapper;
 import com.example.agent.security.SecurityUtils;
 import com.example.agent.service.AiGateway;
 import com.example.agent.service.ReportService;
@@ -21,13 +20,11 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 
 /**
  * 候选人评估报告（M4）。
@@ -47,69 +44,32 @@ public class ReportServiceImpl implements ReportService {
 
     private final JobPositionMapper jobPositionMapper;
     private final CandidateResumeMapper candidateResumeMapper;
-    private final MatchResultMapper matchResultMapper;
     private final CandidateReportMapper candidateReportMapper;
     private final AiGateway aiGateway;
     private final ObjectMapper objectMapper;
     private final RagProperties ragProperties;
 
+    private final org.springframework.beans.factory.ObjectProvider<com.example.agent.service.materials.MaterialTaskService> materialTasks;
+    private final com.example.agent.service.materials.MaterialTaskStore materialStore;
+
     @Override
-    @Transactional
     public CandidateReportResponse generate(Long resumeId) {
-        CandidateResumeEntity resume = requireOwnedResume(resumeId);
-        if (!"PARSED".equals(resume.getParseStatus())) {
-            throw new IllegalArgumentException("简历尚未解析成功，无法生成报告");
-        }
-        JobPositionEntity position = jobPositionMapper.selectById(resume.getPositionId());
+        materialTasks.getObject().runSync(resumeId,"REPORT");
+        return getReport(resumeId);
+    }
 
-        // 报告以匹配结果为基础
-        MatchResultEntity match = matchResultMapper.selectOne(
-                new LambdaQueryWrapper<MatchResultEntity>()
-                        .eq(MatchResultEntity::getResumeId, resumeId)
-                        .orderByDesc(MatchResultEntity::getId)
-                        .last("LIMIT 1"));
-        if (match == null) {
-            throw new IllegalArgumentException("该候选人尚未完成人岗匹配，请先执行匹配再生成报告");
-        }
-        if ("REJECTED".equals(match.getHrDecision())) {
-            throw new IllegalArgumentException("该候选人已被 HR 淘汰，不再生成评估报告");
-        }
-
-        // Web 搜索市场行情（失败不阻断报告生成）
-        List<CandidateReportResponse.MarketRef> marketRefs = searchMarket(position.getTitle(), position.getCity());
-
-        CandidateReportEntity report;
-        try {
-            report = callLlm(position, resume, match, marketRefs);
-        } catch (IllegalArgumentException e) {
-            throw e;
-        } catch (Exception e) {
-            log.warn("LLM 报告生成失败: resumeId={}, {}", resumeId, e.getMessage());
-            throw new IllegalArgumentException("评估报告生成失败，请稍后重试");
-        }
-
-        // 重新生成覆盖旧报告
-        candidateReportMapper.delete(new LambdaQueryWrapper<CandidateReportEntity>()
-                .eq(CandidateReportEntity::getResumeId, resumeId));
-        report.setResumeId(resumeId);
-        report.setPositionId(position.getId());
-        report.setMarketRef(toMarketRefJson(marketRefs));
-        report.setHrDecision("PENDING");
-        report.setCreatedAt(LocalDateTime.now());
-        candidateReportMapper.insert(report);
-        log.info("评估报告生成完成: resumeId={} positionId={} recommend={} marketRefs={}",
-                resumeId, position.getId(), report.getFinalRecommend(), marketRefs.size());
-        return toResponse(report, resume, match);
+    @Override
+    public CandidateReportEntity prepare(JobPositionEntity position,CandidateResumeEntity resume,MatchResultEntity match,Runnable beforeGenerate) throws Exception {
+        var refs=searchMarket(position.getTitle(),position.getCity());
+        beforeGenerate.run();
+        var report=callLlm(position,resume,match,refs);
+        report.setMarketRef(toMarketRefJson(refs));
+        return report;
     }
 
     @Override
     public CandidateReportResponse getReport(Long resumeId) {
         CandidateResumeEntity resume = requireOwnedResume(resumeId);
-        MatchResultEntity match = matchResultMapper.selectOne(
-                new LambdaQueryWrapper<MatchResultEntity>()
-                        .eq(MatchResultEntity::getResumeId, resumeId)
-                        .orderByDesc(MatchResultEntity::getId)
-                        .last("LIMIT 1"));
         CandidateReportEntity report = candidateReportMapper.selectOne(
                 new LambdaQueryWrapper<CandidateReportEntity>()
                         .eq(CandidateReportEntity::getResumeId, resumeId)
@@ -118,7 +78,7 @@ public class ReportServiceImpl implements ReportService {
         if (report == null) {
             throw new IllegalArgumentException("该候选人尚未生成评估报告");
         }
-        return toResponse(report, resume, match);
+        return toResponse(report, resume);
     }
 
     @Override
@@ -130,19 +90,14 @@ public class ReportServiceImpl implements ReportService {
         if (reports.isEmpty()) {
             return List.of();
         }
-        // 批量取简历与匹配分
+        // 展示生成时的来源分数；没有来源记录的历史报告排在最后。
         List<CandidateReportResponse> result = new ArrayList<>();
         for (CandidateReportEntity report : reports) {
             CandidateResumeEntity resume = candidateResumeMapper.selectById(report.getResumeId());
-            MatchResultEntity match = matchResultMapper.selectOne(
-                    new LambdaQueryWrapper<MatchResultEntity>()
-                            .eq(MatchResultEntity::getResumeId, report.getResumeId())
-                            .orderByDesc(MatchResultEntity::getId)
-                            .last("LIMIT 1"));
-            result.add(toResponse(report, resume, match));
+            result.add(toResponse(report, resume));
         }
-        result.sort((a, b) -> b.matchScore() == null || a.matchScore() == null ? 0
-                : b.matchScore().compareTo(a.matchScore()));
+        result.sort(java.util.Comparator.comparing(CandidateReportResponse::matchScore,
+                java.util.Comparator.nullsLast(java.util.Comparator.reverseOrder())));
         return result;
     }
 
@@ -171,8 +126,10 @@ public class ReportServiceImpl implements ReportService {
         sb.append("【匹配评分】综合 ").append(match.getMatchScore())
                 .append(" 分（规则分 ").append(match.getScoreDetail() == null ? "-" : match.getScoreDetail())
                 .append("），命中 ").append(match.getSkillHits())
-                .append("，缺失 ").append(StringUtils.hasText(match.getSkillGaps())
+                .append("，待核实技能 ").append(StringUtils.hasText(match.getSkillGaps())
                         ? match.getSkillGaps() : "无").append('\n');
+        sb.append("简历未提及的技能仅表示待核实，不能断言候选人不具备。评分明细中的 DEGRADED 表示语义评分失败，")
+                .append("RULE_ONLY 表示未设置必须技能；这两种情况的综合分仅使用规则分，不能描述为已完成模型评估。\n");
         String rawText = resume.getRawText();
         if (StringUtils.hasText(rawText)) {
             String brief = rawText.length() > MAX_RESUME_TEXT ? rawText.substring(0, MAX_RESUME_TEXT) : rawText;
@@ -205,7 +162,7 @@ public class ReportServiceImpl implements ReportService {
         report.setStrength(textOrNull(node, "strength"));
         report.setRisk(textOrNull(node, "risk"));
         report.setSalarySuggest(textOrNull(node, "salarySuggest"));
-        report.setFinalRecommend(normalizeRecommend(node.path("finalRecommend").asText("YES")));
+        report.setFinalRecommend(textOrNull(node,"finalRecommend"));
         report.setReportMd(textOrNull(node, "reportMd"));
         if (!StringUtils.hasText(report.getSummary()) || !StringUtils.hasText(report.getReportMd())) {
             throw new IllegalArgumentException("LLM 报告内容不完整");
@@ -256,8 +213,7 @@ public class ReportServiceImpl implements ReportService {
     // ==================== 工具方法 ====================
 
     private CandidateReportResponse toResponse(CandidateReportEntity report,
-                                               CandidateResumeEntity resume,
-                                               MatchResultEntity match) {
+                                               CandidateResumeEntity resume) {
         List<CandidateReportResponse.MarketRef> refs = new ArrayList<>();
         if (StringUtils.hasText(report.getMarketRef())) {
             try {
@@ -276,7 +232,7 @@ public class ReportServiceImpl implements ReportService {
                 report.getResumeId(),
                 report.getPositionId(),
                 resume == null ? null : resume.getCandidateName(),
-                match == null ? null : match.getMatchScore(),
+                materialStore.reportScore(report.getId()),
                 report.getSummary(),
                 report.getStrength(),
                 report.getRisk(),
@@ -288,16 +244,9 @@ public class ReportServiceImpl implements ReportService {
                 report.getCreatedAt() == null ? null : report.getCreatedAt().toString());
     }
 
-    private String normalizeRecommend(String recommend) {
-        String r = recommend == null ? "" : recommend.trim().toUpperCase(Locale.ROOT);
-        return switch (r) {
-            case "STRONG_YES" -> "STRONG_YES";
-            case "NO" -> "NO";
-            default -> "YES";
-        };
-    }
-
     private String textOrNull(JsonNode node, String field) {
+        if (node.hasNonNull(field) && !node.get(field).isTextual())
+            throw new com.example.agent.service.materials.MaterialFailure("INVALID_OUTPUT","报告字段格式不符合要求，原内容保留");
         String value = node.path(field).asText(null);
         return StringUtils.hasText(value) ? value.trim() : null;
     }

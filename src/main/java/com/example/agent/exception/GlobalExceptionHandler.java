@@ -14,6 +14,19 @@ import java.util.stream.Collectors;
 @Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+    @ExceptionHandler(com.example.agent.service.materials.MaterialFailure.class)
+    public ResponseEntity<ApiErrorResponse> handleMaterial(com.example.agent.service.materials.MaterialFailure ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiErrorResponse.of(409,ex.code(),ex.getMessage()));
+    }
+    @ExceptionHandler(com.example.agent.service.resumes.ResumeParseFailure.class)
+    public ResponseEntity<ApiErrorResponse> handleResumeParse(com.example.agent.service.resumes.ResumeParseFailure ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiErrorResponse.of(409,ex.code(),ex.getMessage()));
+    }
+    @ExceptionHandler(com.example.agent.service.matching.MatchTaskFailure.class)
+    public ResponseEntity<ApiErrorResponse> handleMatchTask(com.example.agent.service.matching.MatchTaskFailure ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiErrorResponse.of(409, ex.code(), ex.getMessage()));
+    }
 
     @ExceptionHandler(AiServiceException.class)
     public ResponseEntity<ApiErrorResponse> handleAiService(AiServiceException ex) {

@@ -1,0 +1,103 @@
+name: wibecoding-local
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.local
+    image: wibecoding-app:local
+    ports:
+      - "127.0.0.1:18080:8080"
+    environment:
+      AI_SERVICE_BASE_URL: http://ai-service:8000
+      AI_SERVICE_TOKEN: ${AI_SERVICE_TOKEN:?Set AI_SERVICE_TOKEN}
+      MATCH_TASK_TIMEOUT_SECONDS: ${MATCH_TASK_TIMEOUT_SECONDS:-600}
+      RESUME_PARSE_TASK_TIMEOUT_SECONDS: ${RESUME_PARSE_TASK_TIMEOUT_SECONDS:-600}
+      MATERIAL_TASK_TIMEOUT_SECONDS: ${MATERIAL_TASK_TIMEOUT_SECONDS:-600}
+      MYSQL_HOST: mysql
+      MYSQL_DATABASE: agent
+      MYSQL_USERNAME: agent
+      MYSQL_PASSWORD: local-agent-password
+      REDIS_HOST: redis
+      QDRANT_URL: http://qdrant:6333
+      DEEPSEEK_CLIENT_API_KEY: ${DEEPSEEK_CLIENT_API_KEY:-local-startup-placeholder}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      RAG_EMBEDDING_PROVIDER: ${RAG_EMBEDDING_PROVIDER:-hash}
+      RAG_EMBEDDING_API_KEY: ${RAG_EMBEDDING_API_KEY:-local-startup-placeholder}
+      RAG_EMBEDDING_BASE_URL: ${RAG_EMBEDDING_BASE_URL:-https://api.siliconflow.cn/v1}
+      RAG_RERANK_ENABLED: "false"
+      JWT_SECRET: local-container-verification-secret-at-least-32-characters
+    depends_on:
+      ai-service:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+  ai-service:
+    build:
+      context: ../ai-service
+      args:
+        PYTHON_BASE_IMAGE: ${PYTHON_BASE_IMAGE:-python:3.12-slim}
+    environment:
+      HTTP_PROXY: ${AI_HTTP_PROXY:-}
+      VECTOR_PROXY_URL: ${VECTOR_PROXY_URL:-}
+      VECTOR_PROXY_RDNS: ${VECTOR_PROXY_RDNS:-false}
+      HTTPS_PROXY: ${AI_HTTPS_PROXY:-}
+      NO_PROXY: ${AI_NO_PROXY:-localhost,127.0.0.1,app,ai-service,mysql,redis,qdrant,host.docker.internal,api.siliconflow.cn}
+      AI_SERVICE_TOKEN: ${AI_SERVICE_TOKEN:?Set AI_SERVICE_TOKEN}
+      DEEPSEEK_CLIENT_API_KEY: ${DEEPSEEK_CLIENT_API_KEY:-}
+      DEEPSEEK_BASE_URL: ${AI_MODEL_BASE_URL:-https://api.deepseek.com/v1}
+      AI_MODEL: ${AI_MODEL:-deepseek-chat}
+      JAVA_SERVICE_URL: http://app:8080
+      AI_CHECKPOINT_DB: /service/data/workflows.sqlite
+      TAVILY_API_KEY: ${TAVILY_API_KEY:-}
+      RAG_EMBEDDING_API_KEY: ${RAG_EMBEDDING_API_KEY:-}
+      RAG_EMBEDDING_BASE_URL: ${RAG_EMBEDDING_BASE_URL:-https://api.siliconflow.cn/v1}
+      RAG_EMBEDDING_MODEL: ${RAG_EMBEDDING_MODEL:-BAAI/bge-m3}
+      RAG_RERANK_API_KEY: ${RAG_RERANK_API_KEY:-}
+      RAG_RERANK_BASE_URL: ${RAG_RERANK_BASE_URL:-https://api.siliconflow.cn/v1}
+      RAG_RERANK_MODEL: ${RAG_RERANK_MODEL:-BAAI/bge-reranker-v2-m3}
+    volumes:
+      - ai_workflows:/service/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: local-root-password
+      MYSQL_DATABASE: agent
+      MYSQL_USER: agent
+      MYSQL_PASSWORD: local-agent-password
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./local/01-schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ../scripts/init-users.sql:/docker-entrypoint-initdb.d/02-init-users.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "MYSQL_PWD=$$MYSQL_PASSWORD mysql -uagent -D agent -e 'SELECT COUNT(*) FROM sys_user' > /dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+  qdrant:
+    image: qdrant/qdrant:latest
+    volumes:
+      - qdrant_data:/qdrant/storage
+volumes:
+  ai_workflows:
+  mysql_data:
+  redis_data:
+  qdrant_data:

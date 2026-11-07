@@ -86,7 +86,7 @@ CREATE INDEX IF NOT EXISTS idx_mat_status ON multi_agent_task(status);
 CREATE INDEX IF NOT EXISTS idx_mat_thread_id ON multi_agent_task(thread_id);
 
 -- ============================================================
--- 智能招聘助手 业务表（与 doc/sql/recruitment_schema.sql 对应，
+-- 智能招聘助手 业务表（与 docs/development/sql/recruitment_schema.sql 对应，
 -- 此处为 MySQL + H2 双兼容版本：TEXT/TIMESTAMP，无 COMMENT/ENGINE）
 -- ============================================================
 
@@ -181,3 +181,98 @@ CREATE TABLE IF NOT EXISTS candidate_report (
     created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_report_resume ON candidate_report(resume_id);
+
+
+-- Existing databases: apply once before starting the new Java version.
+-- Additive and idempotent; no existing business tables or records are changed.
+CREATE TABLE IF NOT EXISTS recruitment_match_task (
+    id                VARCHAR(36) PRIMARY KEY,
+    position_id       BIGINT NOT NULL,
+    owner_id          BIGINT NOT NULL,
+    request_key       VARCHAR(80) NOT NULL,
+    input_hash        VARCHAR(64) NOT NULL,
+    status            VARCHAR(20) NOT NULL,
+    phase             VARCHAR(32) NOT NULL,
+    completed_batches INT NOT NULL DEFAULT 0,
+    total_batches     INT NOT NULL,
+    candidate_count   INT NOT NULL,
+    degraded_count    INT NOT NULL DEFAULT 0,
+    error_code        VARCHAR(40),
+    error_message     VARCHAR(255),
+    created_at        TIMESTAMP(6) NOT NULL,
+    updated_at        TIMESTAMP(6) NOT NULL,
+    deadline_at       TIMESTAMP(6) NOT NULL,
+    UNIQUE (position_id, request_key),
+    INDEX idx_match_task_queue (status, created_at),
+    INDEX idx_match_task_deadline (status, deadline_at)
+);
+
+
+-- Accepted duplicate request keys remain idempotent after the reused task finishes.
+CREATE TABLE IF NOT EXISTS recruitment_match_request (
+    position_id BIGINT NOT NULL,
+    request_key VARCHAR(80) NOT NULL,
+    task_id VARCHAR(36) NOT NULL,
+    created_at TIMESTAMP(6) NOT NULL,
+    PRIMARY KEY (position_id, request_key)
+);
+
+
+-- Additive retry-task tables. Existing candidate and document data are preserved.
+CREATE TABLE IF NOT EXISTS recruitment_resume_parse_task (
+    id VARCHAR(36) PRIMARY KEY,
+    position_id BIGINT NOT NULL,
+    owner_id BIGINT NOT NULL,
+    request_key VARCHAR(80) NOT NULL,
+    input_hash VARCHAR(64) NOT NULL,
+    status VARCHAR(20) NOT NULL,
+    error_code VARCHAR(40),
+    error_message VARCHAR(255),
+    created_at TIMESTAMP(6) NOT NULL,
+    updated_at TIMESTAMP(6) NOT NULL,
+    deadline_at TIMESTAMP(6) NOT NULL,
+    UNIQUE (position_id, request_key),
+    INDEX idx_resume_parse_queue (status, created_at),
+    INDEX idx_resume_parse_deadline (status, deadline_at)
+);
+CREATE TABLE IF NOT EXISTS recruitment_resume_parse_item (
+    task_id VARCHAR(36) NOT NULL,
+    resume_id BIGINT NOT NULL,
+    ordinal_no INT NOT NULL,
+    input_hash VARCHAR(64) NOT NULL,
+    status VARCHAR(20) NOT NULL,
+    error_code VARCHAR(40),
+    error_message VARCHAR(255),
+    PRIMARY KEY (task_id, resume_id)
+);
+
+
+-- Additive tables for durable interview-question and report generation.
+CREATE TABLE IF NOT EXISTS recruitment_material_task (
+    id VARCHAR(36) PRIMARY KEY,
+    resume_id BIGINT NOT NULL,
+    owner_id BIGINT NOT NULL,
+    kind VARCHAR(20) NOT NULL,
+    request_key VARCHAR(80) NOT NULL,
+    input_hash VARCHAR(64) NOT NULL,
+    source_score DECIMAL(5,2),
+    result_id BIGINT,
+    status VARCHAR(20) NOT NULL,
+    phase VARCHAR(32) NOT NULL,
+    error_code VARCHAR(40),
+    error_message VARCHAR(255),
+    created_at TIMESTAMP(6) NOT NULL,
+    updated_at TIMESTAMP(6) NOT NULL,
+    deadline_at TIMESTAMP(6) NOT NULL,
+    UNIQUE (resume_id,kind,request_key),
+    INDEX idx_material_queue (status,created_at),
+    INDEX idx_material_deadline (status,deadline_at),
+    INDEX idx_material_result (kind,result_id)
+);
+CREATE TABLE IF NOT EXISTS recruitment_material_request (
+    resume_id BIGINT NOT NULL,
+    kind VARCHAR(20) NOT NULL,
+    request_key VARCHAR(80) NOT NULL,
+    task_id VARCHAR(36) NOT NULL,
+    PRIMARY KEY (resume_id,kind,request_key)
+);

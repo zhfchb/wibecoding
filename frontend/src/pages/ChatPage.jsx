@@ -4,6 +4,7 @@ import { SendOutlined, ReloadOutlined, PlusOutlined, MessageOutlined, DeleteOutl
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { chatApi, streamChat } from '../api'
+import PageIntro from '../components/PageIntro'
 
 const { TextArea } = Input
 const { Text, Paragraph } = Typography
@@ -143,7 +144,8 @@ export default function ChatPage() {
   }
 
   return (
-    <div style={{ display: 'flex', gap: 16, height: 'calc(100vh - 140px)' }}>
+    <div><PageIntro eyebrow="ASK YOUR LIBRARY" title="有问题，先查资料。">基于已上传的招聘参考资料提问，并查看回答来源。需要筛选候选人或生成面试题，请进入岗位工作台。</PageIntro>
+    <div className="chat-panels" style={{ display: 'flex', gap: 16, minHeight: 540, height: 'calc(100vh - 285px)' }}>
       {/* 左侧：会话列表 */}
       <Card
         size="small"
@@ -215,23 +217,22 @@ export default function ChatPage() {
 
       {/* 右侧：聊天区域 */}
       <Card
-        title="RAG 对话"
+        title="资料问答"
         extra={
           <Space>
-            <Text type="secondary">流式</Text>
+            <Text type="secondary">实时显示</Text>
             <Switch checked={streamMode} onChange={setStreamMode} />
             <Button icon={<ReloadOutlined />} onClick={handleClear}>清空</Button>
           </Space>
         }
         style={{ flex: 1, display: 'flex', flexDirection: 'column' }}
-        bodyStyle={{ flex: 1, overflow: 'auto', padding: 24 }}
+        styles={{ body: { flex: 1, overflow: 'auto', padding: 24 } }}
       >
-        <div style={{ marginBottom: 16 }}>
-          <Text type="secondary">会话 ID：{sessionId}</Text>
-        </div>
         {messages.length === 0 && (
           <div style={{ textAlign: 'center', color: '#999', padding: 48 }}>
-            输入问题开始对话，支持基于知识库的 RAG 检索增强生成
+            <h3 style={{ color: '#294d3e', marginBottom: 12 }}>从你的招聘资料中寻找答案</h3>
+            <p>先在资料库上传参考文档，再提出具体问题。</p>
+            <Button type="link" onClick={() => setInput('请根据已上传的资料，总结技术面试的评价标准，并注明来源。')}>试着问：技术面试有哪些评价标准？</Button>
           </div>
         )}
         {messages.map((msg, i) => (
@@ -269,7 +270,7 @@ export default function ChatPage() {
                   <Text type="secondary" style={{ fontSize: 12 }}>来源：</Text>
                   {msg.sources.map((s, j) => (
                     <Tag key={j} style={{ fontSize: 11 }}>
-                      {s.fileName}#{s.chunkIndex}（{s.score?.toFixed?.(2) || s.score}）
+                      {s.fileName}
                     </Tag>
                   ))}
                 </>
@@ -302,6 +303,6 @@ export default function ChatPage() {
           </Button>
         </div>
       </Card>
-    </div>
+    </div></div>
   )
 }

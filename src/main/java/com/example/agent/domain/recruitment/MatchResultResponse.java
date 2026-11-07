@@ -23,11 +23,12 @@ public record MatchResultResponse(
     /** 评分明细：各分项得分与权重（可解释性） */
     public record ScoreDetail(
             int ruleScore,
-            int llmScore,
+            Integer llmScore,
             int skillScore,
             int preferredScore,
             int yearsScore,
             int educationScore,
-            String llmNotes) {
+            String llmNotes,
+            String scoringStatus) {
     }
 }

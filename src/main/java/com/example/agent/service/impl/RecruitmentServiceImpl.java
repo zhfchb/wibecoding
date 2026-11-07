@@ -56,6 +56,7 @@ public class RecruitmentServiceImpl implements RecruitmentService {
     private final AiGateway aiGateway;
     private final ObjectMapper objectMapper;
     private final ResumeParser resumeParser;
+    private final com.example.agent.service.resumes.ResumeProfileReader resumeProfiles;
 
     // ==================== 岗位管理 ====================
 
@@ -195,7 +196,7 @@ public class RecruitmentServiceImpl implements RecruitmentService {
             try {
                 CandidateResumeEntity resume = uploadSingleResume(positionId, file, fileName);
                 items.add(new ResumeUploadResponse.ResumeUploadItem(
-                        fileName, true, resume.getId(), resume.getCandidateName(), null));
+                        fileName, "PARSED".equals(resume.getParseStatus()), resume.getId(), resume.getCandidateName(), resume.getParseError()));
             } catch (Exception e) {
                 // 单份失败不阻断批量
                 log.error("简历上传失败: positionId={} file={}", positionId, fileName, e);
@@ -229,20 +230,20 @@ public class RecruitmentServiceImpl implements RecruitmentService {
         entity.setCreatedAt(LocalDateTime.now());
 
         try {
-            JsonNode profile = resumeParser.parse(rawText);
-            entity.setCandidateName(textOrNull(profile, "candidate_name"));
-            entity.setEmail(textOrNull(profile, "email"));
-            entity.setEducation(textOrNull(profile, "education"));
-            entity.setLastCompany(textOrNull(profile, "last_company"));
-            entity.setYearsExp(profile.hasNonNull("years_exp") ? profile.get("years_exp").asInt() : null);
-            List<String> skills = readStringArray(profile.get("skills"));
-            entity.setSkills(objectMapper.writeValueAsString(skills));
+            var profile = resumeProfiles.read(resumeParser.parse(rawText));
+            entity.setCandidateName(profile.getCandidateName());
+            entity.setEmail(profile.getEmail());
+            entity.setEducation(profile.getEducation());
+            entity.setLastCompany(profile.getLastCompany());
+            entity.setYearsExp(profile.getYearsExp());
+            entity.setSkills(profile.getSkills());
             entity.setParseStatus("PARSED");
         } catch (Exception e) {
             // 结构化抽取失败：简历仍保留（可人工补录），标记 FAILED
-            log.warn("简历 LLM 解析失败，标记 FAILED: file={} err={}", fileName, e.getMessage());
+            log.warn("简历 LLM 解析失败，标记 FAILED: type={}", e.getClass().getSimpleName());
             entity.setParseStatus("FAILED");
-            entity.setParseError(truncate(e.getMessage(), 500));
+            entity.setParseError(e instanceof com.example.agent.service.resumes.ResumeParseFailure ? e.getMessage()
+                    : "简历解析失败，请检查 AI 服务后重新解析");
         }
         candidateResumeMapper.insert(entity);
         return entity;
@@ -382,6 +383,12 @@ public class RecruitmentServiceImpl implements RecruitmentService {
     private void validatePosition(PositionRequest request) {
         if (request == null || !StringUtils.hasText(request.getTitle())) {
             throw new IllegalArgumentException("岗位名称不能为空");
+        }
+        Integer lower = request.getSalaryMin();
+        Integer upper = request.getSalaryMax();
+        if (lower == null && upper == null) return; // Existing imports/API callers may omit salary.
+        if (lower == null || upper == null || lower < 0 || upper <= lower) {
+            throw new IllegalArgumentException("请填写完整薪资范围，薪资下限不能为负，上限至少比下限高 1k");
         }
     }
 

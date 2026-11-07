@@ -83,4 +83,19 @@ class QdrantVectorStoreTest {
         vector[axis % DIMENSION] = 1f;
         return vector;
     }
+
+    @Test
+    void hybridSearchKeepsLowRrfScoresAndFiltersOtherOwners() {
+        var sparse = new SparseEmbedding(new int[]{12}, new float[]{1f});
+        store.add(new ChunkRecord(UUID.randomUUID().toString(), "owned", "owner seven",
+                "owned.md", 0, unitVector(0), sparse, 7L));
+        store.add(new ChunkRecord(UUID.randomUUID().toString(), "other", "owner eight",
+                "other.md", 0, unitVector(0), sparse, 8L));
+
+        var matches = store.search(unitVector(0), sparse, 5, 0.2, 60, 7L);
+
+        assertThat(matches).hasSize(1);
+        assertThat(matches.get(0).documentId()).isEqualTo("owned");
+        assertThat(matches.get(0).score()).isLessThan(0.2);
+    }
 }

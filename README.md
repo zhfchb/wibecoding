@@ -32,14 +32,17 @@ Python 版本见 ai-service/requirements.lock，前端版本见 frontend/package
 
 ```powershell
 mvn clean package
-# Dockerfile.local 使用上一步的 JAR
-docker compose --env-file .env.local -f docker-compose.local.yml up -d --build
+# deploy/Dockerfile.local 使用上一步的 JAR
+docker compose --env-file .env.local -f deploy/docker-compose.local.yml up -d --build
 ```
 
 Java API：127.0.0.1:18080；Python 仅开放 Compose 内部端口 8000。
 前端在 frontend 目录执行 npm ci 与 npm run dev，按需设置 Vite 代理目标为 18080。
 默认初始化账号仅供本地测试，使用前检查 scripts/init-users.sql。
-生产部署使用 docker-compose.prod.yml 与 .env.prod，详见 doc/LangChain分阶段迁移.md。
+已有数据库升级新版本前，先执行 `deploy/migrations/20261107_match_tasks.sql` 创建匹配任务表；已有数据卷不会自动重新初始化。步骤见[匹配任务说明](docs/acceptance/MATCH_TASKS.md)。
+失败简历的后台重新解析还需执行 `deploy/migrations/20261107_resume_parse_tasks.sql`，步骤见[简历重解析说明](docs/acceptance/RESUME_PARSE_TASKS.md)。
+面试题和评估报告后台生成需执行 `deploy/migrations/20261107_material_tasks.sql`，步骤见[资料生成任务](docs/acceptance/MATERIAL_TASKS.md)。
+生产部署使用 deploy/docker-compose.prod.yml 与 .env.prod，详见 docs/development/LangChain分阶段迁移.md。
 
 ## 不使用容器启动 Python
 
@@ -83,10 +86,31 @@ mvn test '-Dtest=PythonAiE2ETest'
 
 ## 文档
 
-- doc/LangChain分阶段迁移.md：分阶段 Git、接口、启动、回退和验收。
-- doc/项目架构大纲.md：功能规划与迁移后的架构补充。
-- doc/环境配置说明.md：服务与环境变量。
-- doc/变更日志.md：每阶段改动记录。
+- [文档导航](docs/README.md)：产品、开发、验收与历史资料。
+- [部署入口](deploy/README.md)：本地、生产与基础服务的启动方式。
+- [演示数据](demo-data/README.md)：岗位、简历及导入方式。
+- [迁移说明](docs/development/LangChain分阶段迁移.md)：接口、启动、回退和验收。
+- [变更日志](docs/变更日志.md)：每阶段改动记录。
+- [持久化匹配任务](docs/acceptance/MATCH_TASKS.md)：进度、刷新恢复、幂等、取消、超时和数据库升级。
+- [失败简历重新解析](docs/acceptance/RESUME_PARSE_TASKS.md)：逐份/批量重试、部分失败与上传计数修复。
+- [面试题与报告后台生成](docs/acceptance/MATERIAL_TASKS.md)：生成进度、恢复、旧内容保护与来源评分。
+
+## 目录
+
+```text
+src/          Java 后端源码、配置与测试
+ai-service/   Python AI 服务、依赖与测试
+frontend/     React 前端
+deploy/       Dockerfile、Compose 与数据库初始化
+scripts/      数据初始化和维护脚本
+docs/         产品、开发、验收与历史文档
+demo-data/    岗位和简历演示素材
+outputs/      本地日志及截图（不提交）
+```
+
+所有启动命令默认从项目根目录执行。原根目录的 Compose 文件已移至 `deploy/`。
+本地私有素材位于 `demo-data/local/`，继续被 Git 和 Docker 忽略。
+`target/`、`frontend/dist/`、`node_modules/`、`.venv/` 和测试缓存由工具生成，不作为源码维护。
 
 旧设计、面试和历史文档中的 Java AI 框架说明属于迁移前实现，以当前代码和迁移说明为准。
 本项目用于学习与演示。

@@ -27,7 +27,7 @@ export default function App() {
           </ProtectedRoute>
         }
       >
-        <Route index element={<Navigate to="/chat" replace />} />
+        <Route index element={<Navigate to="/recruitment" replace />} />
         <Route path="chat" element={<ChatPage />} />
         <Route path="agent" element={<AgentPage />} />
         <Route path="knowledge" element={<KnowledgePage />} />

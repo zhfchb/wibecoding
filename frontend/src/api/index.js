@@ -157,10 +157,23 @@ export const recruitmentApi = {
   },
   listResumes: (positionId) => api.get(`/recruitment/positions/${positionId}/resumes`),
   deleteResume: (resumeId) => api.delete(`/recruitment/resumes/${resumeId}`),
+  submitResumeParseTask: (positionId, requestKey, resumeIds) =>
+    api.post(`/recruitment/positions/${positionId}/resumes/parse-tasks`, { requestKey, resumeIds }),
+  latestResumeParseTask: (positionId) => api.get(`/recruitment/positions/${positionId}/resumes/parse-tasks/latest`),
+  cancelResumeParseTask: (taskId) => api.post(`/recruitment/resumes/parse-tasks/${taskId}/cancel`),
+  submitMaterialTask: (resumeId, kind, requestKey) =>
+    api.post(`/recruitment/resumes/${resumeId}/materials/${kind}/tasks`, { requestKey }),
+  latestMaterialTask: (resumeId, kind) => api.get(`/recruitment/resumes/${resumeId}/materials/${kind}/tasks/latest`),
+  cancelMaterialTask: (taskId) => api.post(`/recruitment/materials/tasks/${taskId}/cancel`),
 
   // 人岗匹配
   runMatch: (positionId) =>
     api.post(`/recruitment/positions/${positionId}/match/run`, null, { timeout: 300000 }),
+  submitMatchTask: (positionId, requestKey) =>
+    api.post(`/recruitment/positions/${positionId}/match/tasks`, { requestKey }),
+  latestMatchTask: (positionId) =>
+    api.get(`/recruitment/positions/${positionId}/match/tasks/latest`),
+  cancelMatchTask: (taskId) => api.post(`/recruitment/match/tasks/${taskId}/cancel`),
   listMatchResults: (positionId) =>
     api.get(`/recruitment/positions/${positionId}/match/results`),
   decide: (matchId, approved) =>

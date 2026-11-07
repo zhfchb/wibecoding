@@ -34,3 +34,15 @@ chat:
 ai:
   service:
     token: test-service-token
+
+match:
+  tasks:
+    dispatch-enabled: false
+
+resume:
+  parse-tasks:
+    dispatch-enabled: false
+
+material:
+  tasks:
+    dispatch-enabled: false

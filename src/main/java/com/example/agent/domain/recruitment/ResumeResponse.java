@@ -19,7 +19,8 @@ public record ResumeResponse(
         String fileName,
         String parseStatus,
         String parseError,
-        String createdAt) {
+        String createdAt,
+        boolean retryable) {
 
     public static ResumeResponse from(CandidateResumeEntity entity, String fileName, List<String> skills) {
         return new ResumeResponse(
@@ -34,6 +35,7 @@ public record ResumeResponse(
                 fileName,
                 entity.getParseStatus(),
                 entity.getParseError(),
-                entity.getCreatedAt() == null ? null : entity.getCreatedAt().toString());
+                entity.getCreatedAt() == null ? null : entity.getCreatedAt().toString(),
+                "FAILED".equals(entity.getParseStatus()) && org.springframework.util.StringUtils.hasText(entity.getRawText()));
     }
 }

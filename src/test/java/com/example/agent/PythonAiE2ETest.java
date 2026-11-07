@@ -38,17 +38,26 @@ class PythonAiE2ETest {
         registry.add("rag.embedding.provider", () -> "openai");
         registry.add("rag.rerank.enabled", () -> true);
         registry.add("rag.rerank.provider", () -> "siliconflow");
+        registry.add("match.tasks.dispatch-enabled", () -> true);
+        registry.add("match.tasks.poll-ms", () -> 100);
+        registry.add("resume.parse-tasks.dispatch-enabled", () -> true);
+        registry.add("resume.parse-tasks.poll-ms", () -> 100);
+        registry.add("material.tasks.dispatch-enabled", () -> true);
+        registry.add("material.tasks.poll-ms", () -> 100);
     }
     @LocalServerPort int javaPort;
     final ObjectMapper mapper = new ObjectMapper();
     HttpServer provider;
     Process python;
+    final java.util.concurrent.atomic.AtomicBoolean failResume = new java.util.concurrent.atomic.AtomicBoolean(false);
+    final java.util.concurrent.atomic.AtomicInteger embeddingRequests = new java.util.concurrent.atomic.AtomicInteger();
     Path database;
 
     @BeforeAll void start() throws Exception {
         database = Files.createTempDirectory("langgraph-e2e-").resolve("workflows.sqlite");
         provider = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         provider.createContext("/v1/embeddings", exchange -> {
+            embeddingRequests.incrementAndGet();
             var input = mapper.readTree(exchange.getRequestBody()).path("input");
             List<Object> data = new ArrayList<>();
             for (int i = 0; i < input.size(); i++) {
@@ -72,10 +81,20 @@ class PythonAiE2ETest {
         provider.createContext("/v1/chat/completions", exchange -> {
             var request = mapper.readTree(exchange.getRequestBody());
             String prompt = request.path("messages").toString();
+            if (prompt.contains("candidate_name") && failResume.get()) {
+                byte[] failure="{\"error\":{\"message\":\"synthetic outage\",\"type\":\"server_error\"}}".getBytes(StandardCharsets.UTF_8);
+                exchange.getResponseHeaders().set("Content-Type","application/json");
+                exchange.sendResponseHeaders(502,failure.length);exchange.getResponseBody().write(failure);exchange.close();return;
+            }
             Object output = "answer [1]";
             if (prompt.contains("candidate_name")) output = Map.of("candidate_name", "Synthetic", "skills", List.of("Java"), "years_exp", 3, "education", "本科");
             else if (prompt.contains("resumeId")) output = Map.of("items", List.of(Map.of("resumeId", 1, "score", 85, "notes", "Java", "hits", List.of("Java"), "gaps", List.of())));
-            else if (prompt.contains("referenceAnswer")) output = Map.of("items", Collections.nCopies(6, Map.of("category", "技术", "question", "Java?", "assessPoint", "test", "referenceAnswer", "test", "difficulty", "EASY")));
+            else if (prompt.contains("referenceAnswer")) {
+                List<Object> questions=new ArrayList<>();
+                for (int i=0;i<6;i++) questions.add(Map.of("category",i<3 ? "技术" : i<5 ? "项目" : "行为",
+                        "question","Java? "+i,"assessPoint","test","referenceAnswer","test","difficulty","EASY"));
+                output=Map.of("items",questions);
+            }
             else if (prompt.contains("finalRecommend")) output = Map.of("summary", "synthetic summary", "strength", "Java", "risk", "verify", "salarySuggest", "unknown", "finalRecommend", "YES", "reportMd", "# Synthetic report");
             String content = output instanceof String ? (String)output : mapper.writeValueAsString(output);
             byte[] bytes;
@@ -146,15 +165,82 @@ class PythonAiE2ETest {
         parts.add("files", new ByteArrayResource("Java Spring project experience three years".getBytes(StandardCharsets.UTF_8)) {
             @Override public String getFilename() { return "synthetic.md"; }
         });
-        var upload = user.post().uri("/api/v1/recruitment/positions/"+id+"/resumes").contentType(MediaType.MULTIPART_FORM_DATA).body(parts).retrieve().body(JsonNode.class);
-        assertThat(upload.path("successCount").asInt()).isEqualTo(1);
+        failResume.set(true);
+        JsonNode upload;
+        try {
+            upload = user.post().uri("/api/v1/recruitment/positions/"+id+"/resumes").contentType(MediaType.MULTIPART_FORM_DATA).body(parts).retrieve().body(JsonNode.class);
+        } finally { failResume.set(false); }
+        assertThat(upload.path("successCount").asInt()).isZero();
+        assertThat(upload.path("failedCount").asInt()).isEqualTo(1);
         long resume = upload.path("items").get(0).path("resumeId").asLong();
         var resumes = user.get().uri("/api/v1/recruitment/positions/"+id+"/resumes").retrieve().body(JsonNode.class);
+        assertThat(resumes.get(0).path("parseStatus").asText()).isEqualTo("FAILED");
+        assertThat(resumes.get(0).path("retryable").asBoolean()).isTrue();
+        String parsePath="/api/v1/recruitment/positions/"+id+"/resumes/parse-tasks";
+        int embeddingsBeforeRetry=embeddingRequests.get();
+        var parseSubmit=user.post().uri(parsePath).body(Map.of("requestKey","http-resume-retry","resumeIds",List.of(resume))).retrieve().toEntity(JsonNode.class);
+        assertThat(parseSubmit.getStatusCode().value()).isEqualTo(202);
+        String parseTaskId=parseSubmit.getBody().path("id").asText();
+        assertThat(post(user,parsePath,Map.of("requestKey","http-resume-retry","resumeIds",List.of(resume))).path("id").asText()).isEqualTo(parseTaskId);
+        JsonNode parseTask=null;
+        for (int attempt=0;attempt<100;attempt++) {
+            parseTask=user.get().uri("/api/v1/recruitment/resumes/parse-tasks/"+parseTaskId).retrieve().body(JsonNode.class);
+            if (!Set.of("QUEUED","RUNNING").contains(parseTask.path("status").asText())) break;
+            Thread.sleep(100);
+        }
+        assertThat(parseTask.path("status").asText()).isEqualTo("SUCCEEDED");
+        assertThat(embeddingRequests.get()).isEqualTo(embeddingsBeforeRetry);
+        assertThat(user.get().uri(parsePath+"/latest").retrieve().body(JsonNode.class).path("id").asText()).isEqualTo(parseTaskId);
+        assertThatThrownBy(() -> other.get().uri("/api/v1/recruitment/resumes/parse-tasks/"+parseTaskId).retrieve().toBodilessEntity())
+                .isInstanceOf(org.springframework.web.client.HttpClientErrorException.NotFound.class);
+        assertThatThrownBy(() -> post(other,"/api/v1/recruitment/resumes/parse-tasks/"+parseTaskId+"/cancel",Map.of()))
+                .isInstanceOf(org.springframework.web.client.HttpClientErrorException.NotFound.class);
+        resumes = user.get().uri("/api/v1/recruitment/positions/"+id+"/resumes").retrieve().body(JsonNode.class);
         assertThat(resumes.get(0).path("parseStatus").asText()).isEqualTo("PARSED");
+        assertThat(resumes.get(0).path("retryable").asBoolean()).isFalse();
         var matches = post(user, "/api/v1/recruitment/positions/"+id+"/match/run", Map.of());
         assertThat(matches.get(0).path("scoreDetail").path("llmScore").asInt()).isEqualTo(85);
+        String asyncPath = "/api/v1/recruitment/positions/" + id + "/match/tasks";
+        var submitted = user.post().uri(asyncPath).body(Map.of("requestKey", "http-idempotent-request"))
+                .retrieve().toEntity(JsonNode.class);
+        assertThat(submitted.getStatusCode().value()).isEqualTo(202);
+        String matchTaskId = submitted.getBody().path("id").asText();
+        assertThat(post(user, asyncPath, Map.of("requestKey", "http-idempotent-request")).path("id").asText()).isEqualTo(matchTaskId);
+        JsonNode matchTask = null;
+        for (int attempt = 0; attempt < 100; attempt++) {
+            matchTask = user.get().uri("/api/v1/recruitment/match/tasks/" + matchTaskId).retrieve().body(JsonNode.class);
+            if (!Set.of("QUEUED", "RUNNING").contains(matchTask.path("status").asText())) break;
+            Thread.sleep(100);
+        }
+        assertThat(matchTask.path("status").asText()).isEqualTo("SUCCEEDED");
+        assertThat(matchTask.path("degradedCount").asInt()).isZero();
+        assertThat(user.get().uri(asyncPath + "/latest").retrieve().body(JsonNode.class).path("id").asText()).isEqualTo(matchTaskId);
+        assertThatThrownBy(() -> other.get().uri("/api/v1/recruitment/match/tasks/" + matchTaskId).retrieve().toBodilessEntity())
+                .isInstanceOf(org.springframework.web.client.HttpClientErrorException.NotFound.class);
+        assertThatThrownBy(() -> post(other, "/api/v1/recruitment/match/tasks/" + matchTaskId + "/cancel", Map.of()))
+                .isInstanceOf(org.springframework.web.client.HttpClientErrorException.NotFound.class);
         assertThat(post(user,"/api/v1/recruitment/resumes/"+resume+"/questions/generate", Map.of()).size()).isEqualTo(6);
         assertThat(post(user,"/api/v1/recruitment/resumes/"+resume+"/report/generate", Map.of()).path("summary").asText()).isEqualTo("synthetic summary");
+        for (String kind:List.of("QUESTIONS","REPORT")) {
+            String materialPath="/api/v1/recruitment/resumes/"+resume+"/materials/"+kind+"/tasks";
+            var materialSubmit=user.post().uri(materialPath).body(Map.of("requestKey","http-material-request")).retrieve().toEntity(JsonNode.class);
+            assertThat(materialSubmit.getStatusCode().value()).isEqualTo(202);
+            String materialId=materialSubmit.getBody().path("id").asText();
+            assertThat(post(user,materialPath,Map.of("requestKey","http-material-request")).path("id").asText()).isEqualTo(materialId);
+            JsonNode material=null;
+            for (int attempt=0;attempt<100;attempt++) {
+                material=user.get().uri("/api/v1/recruitment/materials/tasks/"+materialId).retrieve().body(JsonNode.class);
+                if (!Set.of("QUEUED","RUNNING").contains(material.path("status").asText())) break;
+                Thread.sleep(100);
+            }
+            assertThat(material.path("status").asText()).isEqualTo("SUCCEEDED");
+            assertThat(material.path("stale").asBoolean()).isFalse();
+            assertThat(user.get().uri(materialPath+"/latest").retrieve().body(JsonNode.class).path("id").asText()).isEqualTo(materialId);
+            assertThatThrownBy(() -> other.get().uri("/api/v1/recruitment/materials/tasks/"+materialId).retrieve().toBodilessEntity())
+                    .isInstanceOf(org.springframework.web.client.HttpClientErrorException.NotFound.class);
+            assertThatThrownBy(() -> post(other,"/api/v1/recruitment/materials/tasks/"+materialId+"/cancel",Map.of()))
+                    .isInstanceOf(org.springframework.web.client.HttpClientErrorException.NotFound.class);
+        }
         var answer = post(user, "/api/v1/chat", Map.of("message", "Java", "sessionId", "shared"));
         assertThat(answer.path("sources").size()).isGreaterThan(0);
         var isolated = post(other, "/api/v1/chat", Map.of("message", "Java", "sessionId", "shared"));

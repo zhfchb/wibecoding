@@ -4,14 +4,18 @@ import com.example.agent.config.OpenApiConfig;
 import com.example.agent.domain.recruitment.CandidateReportResponse;
 import com.example.agent.domain.recruitment.InterviewQuestionResponse;
 import com.example.agent.domain.recruitment.MatchResultResponse;
+import com.example.agent.domain.recruitment.MatchTaskResponse;
 import com.example.agent.domain.recruitment.PositionRequest;
 import com.example.agent.domain.recruitment.PositionResponse;
 import com.example.agent.domain.recruitment.ResumeResponse;
 import com.example.agent.domain.recruitment.ResumeUploadResponse;
+import com.example.agent.domain.recruitment.ResumeParseTaskResponse;
 import com.example.agent.service.InterviewService;
 import com.example.agent.service.MatchService;
 import com.example.agent.service.RecruitmentService;
 import com.example.agent.service.ReportService;
+import com.example.agent.service.matching.MatchTaskService;
+import com.example.agent.service.resumes.ResumeParseTaskService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -41,6 +45,9 @@ public class RecruitmentController {
     private final MatchService matchService;
     private final InterviewService interviewService;
     private final ReportService reportService;
+    private final MatchTaskService matchTasks;
+    private final ResumeParseTaskService resumeParseTasks;
+    private final com.example.agent.service.materials.MaterialTaskService materialTasks;
 
     // ==================== 岗位管理 ====================
 
@@ -108,12 +115,64 @@ public class RecruitmentController {
         recruitmentService.deleteResume(resumeId);
     }
 
+    // ==================== 简历重新解析 ====================
+
+    public record ResumeParseSubmission(String requestKey, List<Long> resumeIds) {}
+
+    @PostMapping("/positions/{id}/resumes/parse-tasks")
+    @org.springframework.web.bind.annotation.ResponseStatus(org.springframework.http.HttpStatus.ACCEPTED)
+    @Operation(summary="重新解析失败简历", description="对已保存原文的失败简历创建持久化批量任务，最多20份，不重复向量化")
+    public ResumeParseTaskResponse submitResumeParseTask(
+            @PathVariable("id") Long positionId, @RequestBody ResumeParseSubmission request) {
+        return resumeParseTasks.submit(positionId,request.requestKey(),request.resumeIds());
+    }
+
+    @GetMapping("/positions/{id}/resumes/parse-tasks/latest")
+    public ResumeParseTaskResponse latestResumeParseTask(@PathVariable("id") Long positionId) {
+        return resumeParseTasks.latest(positionId);
+    }
+
+    @GetMapping("/resumes/parse-tasks/{taskId}")
+    public ResumeParseTaskResponse getResumeParseTask(@PathVariable String taskId) {
+        return resumeParseTasks.get(taskId);
+    }
+
+    @PostMapping("/resumes/parse-tasks/{taskId}/cancel")
+    public ResumeParseTaskResponse cancelResumeParseTask(@PathVariable String taskId) {
+        return resumeParseTasks.cancel(taskId);
+    }
+
     // ==================== 人岗匹配 ====================
 
     @Operation(summary = "触发人岗匹配", description = "对该岗位下全部已解析简历执行匹配：规则评分(70%) + LLM语义评分(30%)，按总分排名落库并返回结果列表")
     @PostMapping("/positions/{id}/match/run")
     public List<MatchResultResponse> runMatch(@PathVariable("id") Long positionId) {
-        return matchService.runMatch(positionId);
+        return matchTasks.runSync(positionId);
+    }
+
+    public record MatchSubmission(String requestKey) {}
+
+    @PostMapping("/positions/{id}/match/tasks")
+    @org.springframework.web.bind.annotation.ResponseStatus(org.springframework.http.HttpStatus.ACCEPTED)
+    @Operation(summary = "提交持久化匹配任务", description = "同请求标识幂等，同岗位活动任务复用；新一轮匹配使用新标识")
+    public MatchTaskResponse submitMatchTask(
+            @PathVariable("id") Long positionId, @RequestBody MatchSubmission request) {
+        return matchTasks.submit(positionId, request.requestKey());
+    }
+
+    @GetMapping("/positions/{id}/match/tasks/latest")
+    public MatchTaskResponse latestMatchTask(@PathVariable("id") Long positionId) {
+        return matchTasks.latest(positionId);
+    }
+
+    @GetMapping("/match/tasks/{taskId}")
+    public MatchTaskResponse getMatchTask(@PathVariable String taskId) {
+        return matchTasks.get(taskId);
+    }
+
+    @PostMapping("/match/tasks/{taskId}/cancel")
+    public MatchTaskResponse cancelMatchTask(@PathVariable String taskId) {
+        return matchTasks.cancel(taskId);
     }
 
     @Operation(summary = "查询匹配结果", description = "返回该岗位最近一次匹配的排名结果，含评分明细/技能命中/技能缺失")
@@ -129,6 +188,31 @@ public class RecruitmentController {
     }
 
     // ==================== 定制面试题 ====================
+
+    public record MaterialSubmission(String requestKey) {}
+
+    @PostMapping("/resumes/{resumeId}/materials/{kind}/tasks")
+    @org.springframework.web.bind.annotation.ResponseStatus(org.springframework.http.HttpStatus.ACCEPTED)
+    @Operation(summary="提交题目或报告生成任务", description="kind为QUESTIONS或REPORT，重复请求复用活动任务")
+    public com.example.agent.domain.recruitment.MaterialTaskResponse submitMaterial(
+            @PathVariable Long resumeId,@PathVariable String kind,@RequestBody MaterialSubmission request) {
+        return materialTasks.submit(resumeId,kind,request.requestKey());
+    }
+
+    @GetMapping("/resumes/{resumeId}/materials/{kind}/tasks/latest")
+    public com.example.agent.domain.recruitment.MaterialTaskResponse latestMaterial(@PathVariable Long resumeId,@PathVariable String kind) {
+        return materialTasks.latest(resumeId,kind);
+    }
+
+    @GetMapping("/materials/tasks/{taskId}")
+    public com.example.agent.domain.recruitment.MaterialTaskResponse getMaterialTask(@PathVariable String taskId) {
+        return materialTasks.get(taskId);
+    }
+
+    @PostMapping("/materials/tasks/{taskId}/cancel")
+    public com.example.agent.domain.recruitment.MaterialTaskResponse cancelMaterialTask(@PathVariable String taskId) {
+        return materialTasks.cancel(taskId);
+    }
 
     @Operation(summary = "生成定制面试题", description = "基于岗位要求+候选人技能/缺失项+简历原文，LLM 生成 6 道面试题(技术3/项目2/行为1)，含考察点与参考答案；重新生成覆盖旧题，已被淘汰的候选人不允许生成")
     @PostMapping("/resumes/{resumeId}/questions/generate")

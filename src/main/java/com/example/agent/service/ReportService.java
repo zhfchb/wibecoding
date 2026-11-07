@@ -8,6 +8,9 @@ import java.util.List;
  * 智能招聘：候选人评估报告（M4）
  */
 public interface ReportService {
+    com.example.agent.entity.CandidateReportEntity prepare(com.example.agent.entity.JobPositionEntity position,
+            com.example.agent.entity.CandidateResumeEntity resume,com.example.agent.entity.MatchResultEntity match,
+            Runnable beforeGenerate) throws Exception;
 
     /**
      * 为候选人生成评估报告：匹配评分 + 技能画像 + 市场行情(Web搜索) 由 LLM 整合成

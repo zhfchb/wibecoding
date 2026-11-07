@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Card, Input, Button, List, Tag, Typography, Space, Modal, Form, message, Empty, Badge } from 'antd'
 import { PlusOutlined, CheckOutlined, CloseOutlined, ReloadOutlined } from '@ant-design/icons'
 import { agentApi } from '../api'
+import PageIntro from '../components/PageIntro'
 
 const { TextArea } = Input
 const { Text, Paragraph, Title } = Typography
@@ -90,12 +91,13 @@ export default function AgentPage() {
 
   return (
     <div>
-      <Card title="提交多 Agent 任务" style={{ marginBottom: 16 }}>
+      <PageIntro eyebrow="CONTENT REVIEW" title="让输出经过你的确认。">基于资料生成内容草稿，检查依据后确认，或填写反馈让助手修改。这里的审核针对内容草稿，候选人的通过与淘汰请在岗位中操作。</PageIntro>
+      <Card title="新建内容草稿" style={{ marginBottom: 20 }}>
         <Space.Compact style={{ width: '100%' }}>
           <TextArea
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
-            placeholder="输入问题，检索 Agent 找资料、生成 Agent 写草稿，执行到审核节点前暂停等待人工审批"
+            placeholder="例如：根据已上传的技术评价标准，整理一份 Java 工程师面试注意事项。"
             autoSize={{ minRows: 2, maxRows: 4 }}
             disabled={loading}
           />
@@ -107,7 +109,7 @@ export default function AgentPage() {
           loading={loading}
           style={{ marginTop: 8 }}
         >
-          提交任务
+          生成待审核草稿
         </Button>
       </Card>
 
@@ -125,7 +127,7 @@ export default function AgentPage() {
         }
       >
         {tasks.length === 0 ? (
-          <Empty description="暂无待审核任务（进程重启后遗留任务也会显示在此）" />
+          <Empty description="暂无待审核草稿。填写上方的内容需求，生成后可在这里确认或提出修改意见。" />
         ) : (
           <List
             dataSource={tasks}

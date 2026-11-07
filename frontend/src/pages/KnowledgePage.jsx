@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Card, Upload, Table, Button, message, Typography, Space, Popconfirm } from 'antd'
 import { InboxOutlined, ReloadOutlined, DeleteOutlined } from '@ant-design/icons'
 import { knowledgeApi } from '../api'
+import PageIntro from '../components/PageIntro'
 
 const { Dragger } = Upload
 const { Text } = Typography
@@ -58,15 +59,16 @@ export default function KnowledgePage() {
       // 兼容多种错误格式：业务异常 {message} / Spring 异常 {error} / Multipart 异常
       const errData = err.response?.data
       const errMsg = errData?.message || errData?.error || errData?.title || err.message || '上传失败'
-      message.error(`上传失败：${errMsg}`)
+      const displayError = errMsg.includes('/internal/v1/embeddings')
+        ? '向量化服务暂时不可用，请检查模型连接后重试。'
+        : errMsg
+      message.error(`上传失败：${displayError}`)
       console.error('上传失败详情:', err)
     }
   }
 
   const columns = [
-    { title: '文档 ID', dataIndex: 'documentId', key: 'documentId', ellipsis: true },
-    { title: '文件名', dataIndex: 'fileName', key: 'fileName' },
-    { title: '切片数', dataIndex: 'chunkCount', key: 'chunkCount', width: 80 },
+    { title: '资料名称', dataIndex: 'fileName', key: 'fileName' },
     {
       title: '大小',
       dataIndex: 'fileSize',
@@ -88,7 +90,7 @@ export default function KnowledgePage() {
       render: (_, record) => (
         <Popconfirm
           title="删除此文档？"
-          description="将删除文档元数据、切片数据和向量库中的向量，不可恢复"
+          description="资料及其检索内容将被永久删除，不可恢复"
           onConfirm={() => handleDelete(record.documentId)}
           okText="删除"
           cancelText="取消"
@@ -102,7 +104,8 @@ export default function KnowledgePage() {
 
   return (
     <div>
-      <Card title="上传文档" style={{ marginBottom: 16 }}>
+      <PageIntro eyebrow="HIRING LIBRARY" title="把招聘资料，放在一起。">上传岗位说明、技术评价标准或招聘制度，在「资料问答」中查找依据。候选人简历请进入对应岗位上传。</PageIntro>
+      <Card title="添加参考资料" style={{ marginBottom: 20 }}>
         <Dragger
           customRequest={handleUpload}
           accept=".txt,.md,.markdown,.pdf"
@@ -114,13 +117,13 @@ export default function KnowledgePage() {
           </p>
           <p className="ant-upload-text">点击或拖拽文件上传</p>
           <p className="ant-upload-hint">
-            支持 txt / md / markdown / pdf 格式，单文件最大 50MB。上传后自动切分、Embedding、存入向量库
+            支持 PDF、TXT、Markdown 文档。处理完成后，可在资料问答中检索内容。
           </p>
         </Dragger>
       </Card>
 
       <Card
-        title="文档列表"
+        title="我的参考资料"
         extra={
           <Button
             icon={<ReloadOutlined />}

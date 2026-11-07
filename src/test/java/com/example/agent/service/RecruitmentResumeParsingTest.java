@@ -15,6 +15,30 @@ import static org.mockito.Mockito.*;
 
 class RecruitmentResumeParsingTest {
     @Test
+    void validatesSalaryRangeForCreateAndUpdate() {
+        var positions = mock(JobPositionMapper.class);
+        var json = new ObjectMapper();
+        var service = new RecruitmentServiceImpl(positions, mock(CandidateResumeMapper.class), mock(MatchResultMapper.class),
+                mock(InterviewQuestionMapper.class), mock(CandidateReportMapper.class), mock(DocumentMapper.class),
+                mock(KnowledgeService.class), mock(AiGateway.class), json, mock(ResumeParser.class),
+                new com.example.agent.service.resumes.ResumeProfileReader(json));
+        var request = new com.example.agent.domain.recruitment.PositionRequest();
+        request.setTitle("薪资校验");
+        for (Integer[] range : new Integer[][]{{11,11},{11,10},{-1,12},{null,12},{11,null}}) {
+            request.setSalaryMin(range[0]); request.setSalaryMax(range[1]);
+            org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.createPosition(request))
+                    .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("高 1k");
+            org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.updatePosition(1L,request))
+                    .isInstanceOf(IllegalArgumentException.class);
+        }
+        verifyNoInteractions(positions);
+        request.setSalaryMin(11); request.setSalaryMax(12);
+        assertThat(service.createPosition(request).salaryMax()).isEqualTo(12);
+        request.setSalaryMin(null); request.setSalaryMax(null);
+        service.createPosition(request);
+        verify(positions,times(2)).insert(any(com.example.agent.entity.JobPositionEntity.class));
+    }
+    @Test
     void persistsParsedAndFailedResumesWithoutAbortingBatch() throws Exception {
         var positions = mock(JobPositionMapper.class);
         var resumes = mock(CandidateResumeMapper.class);
@@ -28,14 +52,17 @@ class RecruitmentResumeParsingTest {
                 .thenThrow(new IllegalStateException("AI service unavailable"));
         var service = new RecruitmentServiceImpl(positions, resumes, mock(MatchResultMapper.class),
                 mock(InterviewQuestionMapper.class), mock(CandidateReportMapper.class), mock(DocumentMapper.class),
-                knowledge, mock(AiGateway.class), json, parser);
+                knowledge, mock(AiGateway.class), json, parser, new com.example.agent.service.resumes.ResumeProfileReader(json));
         var file = new MockMultipartFile("file", "resume.md", "text/plain", "Java".getBytes());
-        service.uploadResumes(1L, List.of(file, file));
+        var response = service.uploadResumes(1L, List.of(file, file));
+        assertThat(response.successCount()).isEqualTo(1);
+        assertThat(response.failedCount()).isEqualTo(1);
+        assertThat(response.items().get(1).success()).isFalse();
         var captured = ArgumentCaptor.forClass(CandidateResumeEntity.class);
         verify(resumes, times(2)).insert(captured.capture());
         assertThat(captured.getAllValues().get(0).getParseStatus()).isEqualTo("PARSED");
         assertThat(captured.getAllValues().get(0).getYearsExp()).isEqualTo(3);
         assertThat(captured.getAllValues().get(1).getParseStatus()).isEqualTo("FAILED");
-        assertThat(captured.getAllValues().get(1).getParseError()).contains("unavailable");
+        assertThat(captured.getAllValues().get(1).getParseError()).contains("重新解析").doesNotContain("unavailable");
     }
 }

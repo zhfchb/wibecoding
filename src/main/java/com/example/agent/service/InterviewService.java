@@ -8,6 +8,8 @@ import java.util.List;
  * 智能招聘：LLM 定制面试题生成（M3）
  */
 public interface InterviewService {
+    List<com.example.agent.entity.InterviewQuestionEntity> prepare(com.example.agent.entity.JobPositionEntity position,
+            com.example.agent.entity.CandidateResumeEntity resume,com.example.agent.entity.MatchResultEntity match) throws Exception;
 
     /**
      * 为候选人生成定制面试题：基于岗位要求 + 候选人技能/缺失项 + 工作年限，

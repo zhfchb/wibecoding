@@ -11,14 +11,15 @@ import com.example.agent.mapper.MatchResultMapper;
 import com.example.agent.security.SecurityUtils;
 import com.example.agent.service.AiGateway;
 import com.example.agent.service.MatchService;
+import com.example.agent.service.matching.MatchInputReader;
+import com.example.agent.service.matching.MatchTaskStore;
+import com.example.agent.service.matching.MatchTaskFailure;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
@@ -57,11 +58,25 @@ public class MatchServiceImpl implements MatchService {
     private final MatchResultMapper matchResultMapper;
     private final AiGateway aiGateway;
     private final ObjectMapper objectMapper;
+    private final MatchResultWriter resultWriter;
+    private final MatchInputReader inputReader;
+    private final MatchTaskStore taskStore;
 
     @Override
-    @Transactional
+    public void runTask(MatchTaskStore.Task task) {
+        var input = inputReader.load(task.view().positionId(), task.ownerId());
+        if (!input.hash().equals(task.inputHash())) {
+            throw new MatchTaskFailure("INPUT_CHANGED", "岗位或简历已变化，请重新匹配");
+        }
+        calculate(input.position(), input.resumes(), task.view().id());
+    }
+
+    @Override
     public List<MatchResultResponse> runMatch(Long positionId) {
         JobPositionEntity position = requireOwnedPosition(positionId);
+        if ("CLOSED".equals(position.getStatus())) {
+            throw new IllegalArgumentException("岗位已关闭，不能执行匹配");
+        }
 
         List<CandidateResumeEntity> resumes = candidateResumeMapper.selectList(
                 new LambdaQueryWrapper<CandidateResumeEntity>()
@@ -71,6 +86,12 @@ public class MatchServiceImpl implements MatchService {
             throw new IllegalArgumentException("该岗位下没有已解析成功的简历，请先上传简历");
         }
 
+        calculate(position, resumes, null);
+        return listMatches(positionId);
+    }
+
+    private void calculate(JobPositionEntity position, List<CandidateResumeEntity> resumes, String taskId) {
+        Long positionId = position.getId();
         List<String> required = readSkills(position.getRequiredSkills());
         List<String> preferred = readSkills(position.getPreferredSkills());
 
@@ -82,17 +103,17 @@ public class MatchServiceImpl implements MatchService {
         }
 
         // 2. LLM 语义评分（分批，每批最多 20 人一次调用）
-        Map<Long, LlmResult> llmResults = scoreByLlm(position, resumes, required);
+        Map<Long, LlmResult> llmResults = scoreByLlm(position, resumes, required, taskId);
 
-        // 3. 加权合成 + 排序落库（先清掉该岗位旧结果，匹配以最近一次为准）
-        matchResultMapper.delete(new LambdaQueryWrapper<MatchResultEntity>()
-                .eq(MatchResultEntity::getPositionId, positionId));
-
+        // 模型失败不伪造中性分；降级结果仅采用规则分并明确标记。
         List<MatchResultEntity> entities = new ArrayList<>();
         for (CandidateResumeEntity resume : resumes) {
             RuleResult rule = ruleResults.get(resume.getId());
-            LlmResult llm = llmResults.getOrDefault(resume.getId(), new LlmResult(50, null, List.of(), List.of()));
-            int total = (int) Math.round(RULE_WEIGHT * rule.total() + LLM_WEIGHT * llm.score());
+            LlmResult llm = llmResults.getOrDefault(resume.getId(), new LlmResult(null,
+                    required.isEmpty() ? "岗位未设置必须技能，仅使用规则评分" : "语义评分未完成，仅使用规则评分，可重新匹配",
+                    List.of(), List.of()));
+            int total = llm.score() == null ? rule.total()
+                    : (int) Math.round(RULE_WEIGHT * rule.total() + LLM_WEIGHT * llm.score());
 
             MatchResultEntity entity = new MatchResultEntity();
             entity.setPositionId(positionId);
@@ -102,7 +123,7 @@ public class MatchServiceImpl implements MatchService {
             entity.setSkillHits(toJson(hits));
             // LLM 语义命中可能与规则缺失重复（如 Spring Cloud≈Spring Boot），缺失清单剔除已命中项
             entity.setSkillGaps(toJson(excludeHits(mergeDistinct(rule.gaps, llm.gaps), hits)));
-            entity.setScoreDetail(buildScoreDetailJson(rule, llm));
+            entity.setScoreDetail(buildScoreDetailJson(rule, llm, required.isEmpty()));
             entity.setHrDecision("PENDING");
             entities.add(entity);
         }
@@ -113,14 +134,18 @@ public class MatchServiceImpl implements MatchService {
         for (int i = 0; i < entities.size(); i++) {
             entities.get(i).setRankNo(i + 1);
             entities.get(i).setCreatedAt(LocalDateTime.now());
-            matchResultMapper.insert(entities.get(i));
+        }
+        if (taskId != null) {
+            taskStore.progress(taskId, "SAVING", (resumes.size() + LLM_BATCH_SIZE - 1) / LLM_BATCH_SIZE);
+            resultWriter.saveTask(positionId, entities, taskId);
+        } else {
+            resultWriter.save(positionId, entities);
         }
 
         log.info("匹配完成: positionId={} resumes={} top={} score={}",
                 positionId, entities.size(),
                 entities.isEmpty() ? "-" : entities.get(0).getResumeId(),
                 entities.isEmpty() ? "-" : entities.get(0).getMatchScore());
-        return listMatches(positionId);
     }
 
     @Override
@@ -289,28 +314,30 @@ public class MatchServiceImpl implements MatchService {
 
     // ==================== LLM 语义评分 ====================
 
-    record LlmResult(int score, String notes, List<String> hits, List<String> gaps) {
+    record LlmResult(Integer score, String notes, List<String> hits, List<String> gaps) {
     }
 
     /**
      * LLM 批量语义评分：把岗位必须技能 + 全体候选人的技能清单一次性发给 LLM，
      * 让其判断语义等价（K8s≈Kubernetes、Spring Cloud≈微服务开发）并打分。
-     * 失败时兜底返回 50 分中性值，不阻断匹配。
+     * 失败或漏项时由调用方明确降级为规则评分。
      */
     private Map<Long, LlmResult> scoreByLlm(JobPositionEntity position,
                                             List<CandidateResumeEntity> resumes,
-                                            List<String> required) {
+                                            List<String> required, String taskId) {
         Map<Long, LlmResult> results = new HashMap<>();
         if (required.isEmpty()) {
             return results;
         }
         for (int from = 0; from < resumes.size(); from += LLM_BATCH_SIZE) {
+            if (taskId != null) taskStore.progress(taskId, "SEMANTIC_SCORING", from / LLM_BATCH_SIZE);
             List<CandidateResumeEntity> batch = resumes.subList(from, Math.min(from + LLM_BATCH_SIZE, resumes.size()));
             try {
                 results.putAll(callLlmBatch(position, batch, required));
             } catch (Exception e) {
-                log.warn("LLM 语义评分失败，本批使用中性分50: {}", e.getMessage());
+                log.warn("语义评分失败，本批仅使用规则评分: {}", e.getClass().getSimpleName());
             }
+            if (taskId != null) taskStore.progress(taskId, "SEMANTIC_SCORING", from / LLM_BATCH_SIZE + 1);
         }
         return results;
     }
@@ -334,7 +361,7 @@ public class MatchServiceImpl implements MatchService {
         sb.append("""
 
                 只返回 JSON 数组，不要任何解释文字、不要 markdown 代码块，格式：
-                [{"resumeId":123,"score":85,"notes":"一句话评价技能匹配情况","hits":["语义等价后算命中的技能"],"gaps":["确实缺失的技能"]}]
+                [{"resumeId":123,"score":85,"notes":"一句话评价技能匹配情况","hits":["语义等价后算命中的技能"],"gaps":["简历未体现、需要核实的技能"]}]
                 规则：score 为 0-100 整数，表示技能与岗位要求的语义匹配度（结合技能等价与深度经验综合判断）；hits/gaps 只保留必须技能相关项。
                 """);
 
@@ -352,11 +379,14 @@ public class MatchServiceImpl implements MatchService {
         if (array.isArray()) {
             for (JsonNode node : array) {
                 long resumeId = node.path("resumeId").asLong();
-                if (resumeId <= 0) {
+                JsonNode score = node.path("score");
+                if (batch.stream().noneMatch(r -> r.getId().equals(resumeId))
+                        || !score.isIntegralNumber() || !score.canConvertToInt()
+                        || score.intValue() < 0 || score.intValue() > 100) {
                     continue;
                 }
                 results.put(resumeId, new LlmResult(
-                        clamp(node.path("score").asInt(50)),
+                        score.intValue(),
                         textOrNull(node, "notes"),
                         readStringArray(node.get("hits")),
                         readStringArray(node.get("gaps"))));
@@ -367,11 +397,12 @@ public class MatchServiceImpl implements MatchService {
 
     // ==================== 工具方法 ====================
 
-    private String buildScoreDetailJson(RuleResult rule, LlmResult llm) {
+    private String buildScoreDetailJson(RuleResult rule, LlmResult llm, boolean notRequired) {
         try {
             ObjectNode node = objectMapper.createObjectNode();
             node.put("ruleScore", rule.total());
             node.put("llmScore", llm.score());
+            node.put("scoringStatus", llm.score() != null ? "COMPLETE" : notRequired ? "RULE_ONLY" : "DEGRADED");
             ObjectNode breakdown = node.putObject("breakdown");
             breakdown.put("skill", rule.skillScore());
             breakdown.put("preferred", rule.preferredScore());
@@ -393,12 +424,13 @@ public class MatchServiceImpl implements MatchService {
             JsonNode b = node.path("breakdown");
             return new MatchResultResponse.ScoreDetail(
                     node.path("ruleScore").asInt(),
-                    node.path("llmScore").asInt(),
+                    node.path("llmScore").isNumber() ? node.path("llmScore").intValue() : null,
                     b.path("skill").asInt(),
                     b.path("preferred").asInt(),
                     b.path("years").asInt(),
                     b.path("education").asInt(),
-                    node.path("llmNotes").asText(null));
+                    node.path("llmNotes").asText(null),
+                    node.path("scoringStatus").asText("LEGACY"));
         } catch (Exception e) {
             return null;
         }

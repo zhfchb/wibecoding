@@ -100,3 +100,21 @@ ai:
   service:
     base-url: ${AI_SERVICE_BASE_URL:http://localhost:8000}
     token: ${AI_SERVICE_TOKEN:}
+
+match:
+  tasks:
+    timeout-seconds: ${MATCH_TASK_TIMEOUT_SECONDS:600}
+    poll-ms: 1000
+    dispatch-enabled: true
+
+resume:
+  parse-tasks:
+    timeout-seconds: ${RESUME_PARSE_TASK_TIMEOUT_SECONDS:600}
+    poll-ms: 1000
+    dispatch-enabled: true
+
+material:
+  tasks:
+    timeout-seconds: ${MATERIAL_TASK_TIMEOUT_SECONDS:600}
+    poll-ms: 1000
+    dispatch-enabled: true

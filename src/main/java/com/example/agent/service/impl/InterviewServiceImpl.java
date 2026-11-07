@@ -18,13 +18,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 
 /**
  * LLM 定制面试题生成（M3）。
@@ -46,50 +44,17 @@ public class InterviewServiceImpl implements InterviewService {
     private final AiGateway aiGateway;
     private final ObjectMapper objectMapper;
 
+    private final org.springframework.beans.factory.ObjectProvider<com.example.agent.service.materials.MaterialTaskService> materialTasks;
+
     @Override
-    @Transactional
     public List<InterviewQuestionResponse> generate(Long resumeId) {
-        CandidateResumeEntity resume = requireOwnedResume(resumeId);
-        if (!"PARSED".equals(resume.getParseStatus())) {
-            throw new IllegalArgumentException("简历尚未解析成功，无法生成面试题");
-        }
-
-        // 匹配结果存在且被 HR 淘汰的，不再出题（业务闭环：只有进入面试流程的候选人需要题目）
-        MatchResultEntity match = matchResultMapper.selectOne(
-                new LambdaQueryWrapper<MatchResultEntity>()
-                        .eq(MatchResultEntity::getResumeId, resumeId)
-                        .orderByDesc(MatchResultEntity::getId)
-                        .last("LIMIT 1"));
-        if (match != null && "REJECTED".equals(match.getHrDecision())) {
-            throw new IllegalArgumentException("该候选人已被 HR 淘汰，不再生成面试题");
-        }
-
-        JobPositionEntity position = jobPositionMapper.selectById(resume.getPositionId());
-        if (position == null) {
-            throw new IllegalArgumentException("岗位不存在");
-        }
-
-        List<InterviewQuestionEntity> questions;
-        try {
-            questions = callLlm(position, resume, match);
-        } catch (IllegalArgumentException e) {
-            throw e;
-        } catch (Exception e) {
-            log.warn("LLM 面试题生成失败: resumeId={}, {}", resumeId, e.getMessage());
-            throw new IllegalArgumentException("面试题生成失败，请稍后重试");
-        }
-
-        // 重新生成覆盖旧题
-        interviewQuestionMapper.delete(new LambdaQueryWrapper<InterviewQuestionEntity>()
-                .eq(InterviewQuestionEntity::getResumeId, resumeId));
-        for (InterviewQuestionEntity q : questions) {
-            q.setResumeId(resumeId);
-            q.setPositionId(position.getId());
-            q.setCreatedAt(LocalDateTime.now());
-            interviewQuestionMapper.insert(q);
-        }
-        log.info("面试题生成完成: resumeId={} positionId={} count={}", resumeId, position.getId(), questions.size());
+        materialTasks.getObject().runSync(resumeId,"QUESTIONS");
         return listQuestions(resumeId);
+    }
+
+    @Override
+    public List<InterviewQuestionEntity> prepare(JobPositionEntity position,CandidateResumeEntity resume,MatchResultEntity match) throws Exception {
+        return callLlm(position,resume,match);
     }
 
     @Override
@@ -133,7 +98,7 @@ public class InterviewServiceImpl implements InterviewService {
         if (match != null) {
             sb.append("【技能匹配-命中】").append(StringUtils.hasText(match.getSkillHits())
                     ? match.getSkillHits() : "无").append('\n');
-            sb.append("【技能匹配-缺失】").append(StringUtils.hasText(match.getSkillGaps())
+            sb.append("【技能匹配-待核实】").append(StringUtils.hasText(match.getSkillGaps())
                     ? match.getSkillGaps() : "无").append('\n');
         }
         String rawText = resume.getRawText();
@@ -143,7 +108,7 @@ public class InterviewServiceImpl implements InterviewService {
         }
         sb.append("""
 
-                生成 6 道面试题：技术题 3 道（针对命中技能深挖、针对缺失技能验证真实性）、项目题 2 道（贴合简历中的真实项目经历）、行为题 1 道。
+                生成 6 道面试题：技术题 3 道（针对命中技能深挖、针对未提及技能进一步核实，不断言候选人不具备）、项目题 2 道（贴合简历中的真实项目经历）、行为题 1 道。
                 技术题难度结合候选人年限：3 年以下偏基础(EASY/MEDIUM)，5 年以上必须有 1 道 HARD。
 
                 只返回 JSON 数组，不要任何解释文字、不要 markdown 代码块，格式：
@@ -162,16 +127,16 @@ public class InterviewServiceImpl implements InterviewService {
 
         List<InterviewQuestionEntity> result = new ArrayList<>();
         for (JsonNode node : array) {
-            String question = node.path("question").asText("");
+            String question = textOrNull(node,"question");
             if (!StringUtils.hasText(question)) {
                 continue;
             }
             InterviewQuestionEntity q = new InterviewQuestionEntity();
-            q.setCategory(normalizeCategory(node.path("category").asText("技术")));
+            q.setCategory(textOrNull(node,"category"));
             q.setQuestion(question.trim());
             q.setAssessPoint(textOrNull(node, "assessPoint"));
             q.setReferenceAnswer(textOrNull(node, "referenceAnswer"));
-            q.setDifficulty(normalizeDifficulty(node.path("difficulty").asText("MEDIUM")));
+            q.setDifficulty(textOrNull(node,"difficulty"));
             q.setHrDecision("PENDING");
             result.add(q);
         }
@@ -179,26 +144,6 @@ public class InterviewServiceImpl implements InterviewService {
             throw new IllegalArgumentException("LLM 未生成有效面试题");
         }
         return result;
-    }
-
-    private String normalizeCategory(String category) {
-        String c = category == null ? "" : category.trim();
-        if (c.contains("项目")) {
-            return "项目";
-        }
-        if (c.contains("行为") || c.contains("软素质")) {
-            return "行为";
-        }
-        return "技术";
-    }
-
-    private String normalizeDifficulty(String difficulty) {
-        String d = difficulty == null ? "" : difficulty.trim().toUpperCase(Locale.ROOT);
-        return switch (d) {
-            case "EASY" -> "EASY";
-            case "HARD" -> "HARD";
-            default -> "MEDIUM";
-        };
     }
 
     private CandidateResumeEntity requireOwnedResume(Long resumeId) {
@@ -221,6 +166,8 @@ public class InterviewServiceImpl implements InterviewService {
     }
 
     private String textOrNull(JsonNode node, String field) {
+        if (node.hasNonNull(field) && !node.get(field).isTextual())
+            throw new com.example.agent.service.materials.MaterialFailure("INVALID_OUTPUT","面试题字段格式不符合要求，原内容保留");
         String value = node.path(field).asText(null);
         return StringUtils.hasText(value) ? value.trim() : null;
     }

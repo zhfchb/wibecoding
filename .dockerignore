@@ -14,16 +14,24 @@ application-*.local.yml
 .env.local
 
 # 文档/脚本(镜像里不需要)
-doc/
+docs/
 *.md
 scripts/
 
 # 系统文件
 .DS_Store
 Thumbs.db
+demo-data/local/
 
 # Python local runtime and secrets
 **/.venv/
 **/__pycache__/
 **/.pytest_cache/
 **/.env
+
+# Development artifacts
+outputs/
+demo-data/
+frontend/node_modules/
+frontend/dist/
+*.log

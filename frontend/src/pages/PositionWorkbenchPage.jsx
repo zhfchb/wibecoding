@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Card, Table, Button, message, Space, Tag, Popconfirm, Upload, Drawer,
-  Descriptions, Progress, Typography, Tooltip, Empty, Spin,
+  Descriptions, Progress, Typography, Tooltip, Empty, Spin, Alert,
 } from 'antd'
 import {
   ArrowLeftOutlined, ReloadOutlined, DeleteOutlined, UploadOutlined,
@@ -11,6 +11,11 @@ import { useParams, useNavigate } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { recruitmentApi } from '../api'
+import PageIntro from '../components/PageIntro'
+import ResumeParseTaskPanel from '../components/ResumeParseTaskPanel'
+import useResumeParseTask from '../hooks/useResumeParseTask'
+import useMaterialTask from '../hooks/useMaterialTask'
+import MaterialTaskStatus from '../components/MaterialTaskStatus'
 
 const { Text, Paragraph, Title } = Typography
 
@@ -39,7 +44,7 @@ const difficultyTag = (d) => ({
 function QuestionsDrawer({ open, onClose, resumeId, candidateName }) {
   const [questions, setQuestions] = useState([])
   const [loading, setLoading] = useState(false)
-  const [generating, setGenerating] = useState(false)
+  const [loadError, setLoadError] = useState('')
 
   const load = useCallback(async () => {
     if (!resumeId) return
@@ -47,9 +52,9 @@ function QuestionsDrawer({ open, onClose, resumeId, candidateName }) {
     try {
       const resp = await recruitmentApi.listQuestions(resumeId)
       setQuestions(resp.data || [])
+      setLoadError('')
     } catch (err) {
-      if (err.response?.status !== 400) message.error('加载面试题失败')
-      setQuestions([])
+      setLoadError('无法加载面试题，已有内容保留，请重新加载')
     } finally {
       setLoading(false)
     }
@@ -59,19 +64,7 @@ function QuestionsDrawer({ open, onClose, resumeId, candidateName }) {
     if (open) load()
   }, [open, load])
 
-  const handleGenerate = async () => {
-    setGenerating(true)
-    try {
-      const resp = await recruitmentApi.generateQuestions(resumeId)
-      setQuestions(resp.data || [])
-      message.success(`已生成 ${resp.data.length} 道面试题`)
-    } catch (err) {
-      const errMsg = err.response?.data?.message || err.message || '生成失败'
-      message.error(`生成失败：${errMsg}`)
-    } finally {
-      setGenerating(false)
-    }
-  }
+  const generation = useMaterialTask(open, resumeId, 'QUESTIONS', load)
 
   return (
     <Drawer
@@ -82,14 +75,16 @@ function QuestionsDrawer({ open, onClose, resumeId, candidateName }) {
       extra={
         <Button
           type="primary" icon={<ThunderboltOutlined />}
-          loading={generating} onClick={handleGenerate}
+          loading={generation.loading || generation.submitting || generation.active} disabled={!!generation.error} onClick={generation.submit}
         >
-          {generating ? 'LLM 出题中…' : '重新生成'}
+              {generation.active ? '正在准备面试题…' : generation.task?.status === 'FAILED' ? '重试生成面试题' : questions.length ? '重新生成面试题' : '生成面试题'}
         </Button>
       }
     >
+      <MaterialTaskStatus state={generation} hasContent={questions.length > 0} />
+      {loadError && <Alert style={{ marginBottom: 16 }} type="warning" showIcon message={loadError} action={<Button size="small" onClick={load}>重新加载面试题</Button>} />}
       <Spin spinning={loading}>
-        {questions.length === 0 && !loading ? (
+        {questions.length === 0 && !loading && !loadError ? (
           <Empty description="尚未生成面试题，点击右上角生成" />
         ) : (
           questions.map((q, i) => (
@@ -118,7 +113,7 @@ function QuestionsDrawer({ open, onClose, resumeId, candidateName }) {
 function ReportDrawer({ open, onClose, resumeId, candidateName }) {
   const [report, setReport] = useState(null)
   const [loading, setLoading] = useState(false)
-  const [generating, setGenerating] = useState(false)
+  const [loadError, setLoadError] = useState('')
 
   const load = useCallback(async () => {
     if (!resumeId) return
@@ -126,9 +121,10 @@ function ReportDrawer({ open, onClose, resumeId, candidateName }) {
     try {
       const resp = await recruitmentApi.getReport(resumeId)
       setReport(resp.data)
+      setLoadError('')
     } catch (err) {
-      setReport(null)
-      if (err.response?.status !== 400) message.error('加载报告失败')
+      if (err.response?.status === 400) { setReport(null); setLoadError('') }
+      else setLoadError('无法加载报告，已有内容保留，请重新加载')
     } finally {
       setLoading(false)
     }
@@ -138,19 +134,7 @@ function ReportDrawer({ open, onClose, resumeId, candidateName }) {
     if (open) load()
   }, [open, load])
 
-  const handleGenerate = async () => {
-    setGenerating(true)
-    try {
-      const resp = await recruitmentApi.generateReport(resumeId)
-      setReport(resp.data)
-      message.success(`报告已生成：${resp.data.finalRecommend}`)
-    } catch (err) {
-      const errMsg = err.response?.data?.message || err.message || '生成失败'
-      message.error(`生成失败：${errMsg}`)
-    } finally {
-      setGenerating(false)
-    }
-  }
+  const generation = useMaterialTask(open, resumeId, 'REPORT', load)
 
   return (
     <Drawer
@@ -161,20 +145,22 @@ function ReportDrawer({ open, onClose, resumeId, candidateName }) {
       extra={
         <Button
           type="primary" icon={<FileMarkdownOutlined />}
-          loading={generating} onClick={handleGenerate}
+          loading={generation.loading || generation.submitting || generation.active} disabled={!!generation.error} onClick={generation.submit}
         >
-          {generating ? 'LLM 生成中…' : report ? '重新生成' : '生成报告'}
+          {generation.active ? '正在生成报告…' : generation.task?.status === 'FAILED' ? '重试生成报告' : report ? '重新生成报告' : '生成报告'}
         </Button>
       }
     >
+      <MaterialTaskStatus state={generation} hasContent={!!report} />
+      {loadError && <Alert style={{ marginBottom: 16 }} type="warning" showIcon message={loadError} action={<Button size="small" onClick={load}>重新加载报告</Button>} />}
       <Spin spinning={loading}>
-        {!report && !loading ? (
+        {!report && !loading && !loadError ? (
           <Empty description="尚未生成评估报告，点击右上角生成" />
         ) : report ? (
           <>
-            <Descriptions bordered size="small" column={2} style={{ marginBottom: 16 }}>
-              <Descriptions.Item label="匹配分" span={1}>
-                <Text strong style={{ fontSize: 18 }}>{report.matchScore}</Text>
+            <Descriptions bordered size="small" column={{ xs: 1, sm: 2 }} style={{ marginBottom: 16 }}>
+              <Descriptions.Item label="生成时匹配分" span={1}>
+                <Text strong style={{ fontSize: 18 }}>{report.matchScore ?? '未记录'}</Text>
               </Descriptions.Item>
               <Descriptions.Item label="最终推荐">{recommendTag(report.finalRecommend)}</Descriptions.Item>
               <Descriptions.Item label="建议薪资" span={2}>
@@ -215,11 +201,20 @@ export default function PositionWorkbenchPage() {
   const navigate = useNavigate()
   const [position, setPosition] = useState(null)
   const [resumes, setResumes] = useState([])
+  const [selectedResumes, setSelectedResumes] = useState([])
   const [matches, setMatches] = useState([])
   const [loadingResumes, setLoadingResumes] = useState(false)
   const [loadingMatches, setLoadingMatches] = useState(false)
   const [uploading, setUploading] = useState(false)
-  const [matching, setMatching] = useState(false)
+  const [submittingMatch, setSubmittingMatch] = useState(false)
+  const [matchTask, setMatchTask] = useState(null)
+  const [taskLoading, setTaskLoading] = useState(true)
+  const [taskError, setTaskError] = useState('')
+  const [pollVersion, setPollVersion] = useState(0)
+  const requestKey = useRef(null)
+  const submitInFlight = useRef(false)
+  const taskActive = ['QUEUED', 'RUNNING'].includes(matchTask?.status)
+  const matching = submittingMatch || taskActive
   const [qDrawer, setQDrawer] = useState({ open: false, resumeId: null, name: null })
   const [rDrawer, setRDrawer] = useState({ open: false, resumeId: null, name: null })
 
@@ -234,6 +229,12 @@ export default function PositionWorkbenchPage() {
       setLoadingResumes(false)
     }
   }, [id])
+
+  const resumeParse = useResumeParseTask(id, loadResumes)
+  useEffect(() => { setSelectedResumes([]) }, [id])
+  useEffect(() => {
+    setSelectedResumes(ids => ids.filter(key => resumes.some(r => r.id === key && r.retryable)))
+  }, [resumes])
 
   const loadMatches = useCallback(async () => {
     setLoadingMatches(true)
@@ -256,12 +257,47 @@ export default function PositionWorkbenchPage() {
     loadMatches()
   }, [id, loadResumes, loadMatches])
 
+  // The server is the source of truth; no localStorage task IDs or overlapping interval requests.
+  useEffect(() => {
+    let active = true
+    let timer
+    let lastTerminal = ''
+    setMatchTask(null)
+    setTaskLoading(true)
+    requestKey.current = null
+    const poll = async () => {
+      try {
+        const { data } = await recruitmentApi.latestMatchTask(id)
+        if (!active) return
+        setMatchTask(data || null)
+        setTaskError('')
+        const terminal = data && !['QUEUED', 'RUNNING'].includes(data.status)
+        if (terminal && data.requestKey === requestKey.current) requestKey.current = null
+        if (terminal && lastTerminal !== data.id) {
+          lastTerminal = data.id
+          loadMatches()
+        }
+      } catch {
+        if (active) setTaskError('暂时无法获取匹配任务状态，正在重试。请勿重复提交。')
+      } finally {
+        if (active) {
+          setTaskLoading(false)
+          timer = setTimeout(poll, 2000)
+        }
+      }
+    }
+    poll()
+    return () => { active = false; clearTimeout(timer) }
+  }, [id, loadMatches, pollVersion])
+
   const handleUpload = async ({ file, onSuccess, onError }) => {
     setUploading(true)
     try {
       const resp = await recruitmentApi.uploadResumes(id, [file])
       const { successCount, failedCount } = resp.data
-      message.success(`上传完成：成功 ${successCount} 份${failedCount ? `，失败 ${failedCount} 份` : ''}`)
+      const summary = `上传完成：解析成功 ${successCount} 份${failedCount ? `，失败 ${failedCount} 份；已保存原文的简历可在列表重新解析` : ''}`
+      if (failedCount) message.warning(summary)
+      else message.success(summary)
       onSuccess(resp.data)
       loadResumes()
     } catch (err) {
@@ -274,16 +310,35 @@ export default function PositionWorkbenchPage() {
   }
 
   const handleRunMatch = async () => {
-    setMatching(true)
+    if (submitInFlight.current || taskActive || taskLoading || taskError) return
+    submitInFlight.current = true
+    setSubmittingMatch(true)
+    requestKey.current ||= globalThis.crypto?.randomUUID?.() || `match_${Date.now()}_${Math.random().toString(36).slice(2)}`
     try {
-      const resp = await recruitmentApi.runMatch(id)
-      setMatches(resp.data || [])
-      message.success(`匹配完成，共 ${resp.data.length} 位候选人`)
+      const resp = await recruitmentApi.submitMatchTask(id, requestKey.current)
+      setMatchTask(resp.data)
+      requestKey.current = null
+      setTaskError('')
+      if (resp.data.status === 'SUCCEEDED') loadMatches()
     } catch (err) {
-      const errMsg = err.response?.data?.message || err.message || '匹配失败'
-      message.error(`人岗匹配失败：${errMsg}`)
+      if (!err.response || err.response.status >= 500) {
+        message.warning('提交结果尚未确认，系统会继续查询。重试将复用请求标识。')
+      } else {
+        requestKey.current = null
+        message.error(err.response.data?.message || '无法提交匹配任务')
+      }
     } finally {
-      setMatching(false)
+      submitInFlight.current = false
+      setSubmittingMatch(false)
+    }
+  }
+
+  const handleCancelMatch = async () => {
+    try {
+      const { data } = await recruitmentApi.cancelMatchTask(matchTask.id)
+      setMatchTask(data)
+    } catch {
+      message.error('取消结果尚未确认，请查看任务状态')
     }
   }
 
@@ -311,12 +366,13 @@ export default function PositionWorkbenchPage() {
   }
 
   const resumeColumns = [
-    { title: 'ID', dataIndex: 'id', width: 60 },
-    { title: '姓名', dataIndex: 'candidateName', width: 100, render: (v) => <Text strong>{v || '-'}</Text> },
+    { title: '姓名/文件', dataIndex: 'candidateName', width: 130, render: (v, r) => <Text strong>{v || r.fileName || `简历 #${r.id}`}</Text> },
     {
       title: '解析状态', dataIndex: 'parseStatus', width: 100,
       render: (s, r) => s === 'PARSED'
-        ? <Tag color="green">已解析</Tag>
+        ? r.parseError?.startsWith('DEMO_FIXTURE:')
+          ? <Tooltip title="虚构结构化资料直接导入，未调用 AI 解析或向量化"><Tag>演示预设</Tag></Tooltip>
+          : <Tag color="green">已解析</Tag>
         : <Tooltip title={r.parseError}><Tag color={s === 'FAILED' ? 'red' : 'orange'}>{s === 'FAILED' ? '失败' : '处理中'}</Tag></Tooltip>,
     },
     { title: '技能', dataIndex: 'skills', ellipsis: true, render: (skills) => (skills || []).map((s) => <Tag key={s}>{s}</Tag>) },
@@ -324,9 +380,10 @@ export default function PositionWorkbenchPage() {
     { title: '学历', dataIndex: 'education', width: 80, render: (v) => v || '-' },
     { title: '上家', dataIndex: 'lastCompany', width: 110, render: (v) => v || '-' },
     {
-      title: '操作', key: 'action', width: 160,
+      title: '操作', key: 'action', width: 260,
       render: (_, record) => (
         <Space>
+          {record.retryable && <Button type="link" size="small" disabled={resumeParse.busy || position?.status === 'CLOSED'} onClick={() => resumeParse.submit([record.id])}>重新解析</Button>}
           <Button type="link" size="small" onClick={() => setQDrawer({ open: true, resumeId: record.id, name: record.candidateName })}>
             面试题
           </Button>
@@ -344,20 +401,23 @@ export default function PositionWorkbenchPage() {
   const matchColumns = [
     {
       title: '排名', dataIndex: 'rankNo', width: 70,
-      render: (r) => (r === 1 ? <Tag color="gold">🥇 1</Tag> : r === 2 ? <Tag color="default">🥈 2</Tag> : r === 3 ? <Tag color="orange">🥉 3</Tag> : r),
+      render: (r) => <span className="count-badge">{String(r).padStart(2, '0')}</span>,
     },
     { title: '候选人', dataIndex: 'candidateName', width: 110, render: (v) => <Text strong>{v || '-'}</Text> },
     {
-      title: '综合分', dataIndex: 'matchScore', width: 140, sorter: (a, b) => a.matchScore - b.matchScore,
+      title: '匹配参考分', dataIndex: 'matchScore', width: 140, sorter: (a, b) => a.matchScore - b.matchScore,
       render: (score, r) => (
         <Space>
           <Progress type="circle" percent={Number(score)} size={44}
             strokeColor={score >= 85 ? '#52c41a' : score >= 60 ? '#1677ff' : '#ff4d4f'} format={(p) => p} />
           {r.scoreDetail && (
-            <Tooltip title={`规则分 ${r.scoreDetail.ruleScore} + LLM 语义分 ${r.scoreDetail.llmScore}（技能${r.scoreDetail.skillScore}/加分${r.scoreDetail.preferredScore}/年限${r.scoreDetail.yearsScore}/学历${r.scoreDetail.educationScore}）${r.scoreDetail.llmNotes ? `；LLM：${r.scoreDetail.llmNotes}` : ''}`}>
+            <Tooltip title={`${r.scoreDetail.scoringStatus === 'COMPLETE' ? `规则分 ${r.scoreDetail.ruleScore} × 70% + 语义分 ${r.scoreDetail.llmScore} × 30%` : r.scoreDetail.scoringStatus === 'LEGACY' ? '历史评分，建议重新匹配确认评分状态' : `仅规则分 ${r.scoreDetail.ruleScore}，未计入语义评分`}（技能${r.scoreDetail.skillScore}/加分${r.scoreDetail.preferredScore}/年限${r.scoreDetail.yearsScore}/学历${r.scoreDetail.educationScore}）${r.scoreDetail.llmNotes ? `；${r.scoreDetail.llmNotes}` : ''}`}>
               <Text type="secondary" style={{ fontSize: 12 }}>明细</Text>
             </Tooltip>
           )}
+          {r.scoreDetail?.scoringStatus === 'DEGRADED' && <Tag color="warning">语义评分未完成</Tag>}
+          {r.scoreDetail?.scoringStatus === 'RULE_ONLY' && <Tag>仅规则评分</Tag>}
+          {r.scoreDetail?.scoringStatus === 'LEGACY' && <Tag>历史评分待确认</Tag>}
         </Space>
       ),
     },
@@ -367,7 +427,7 @@ export default function PositionWorkbenchPage() {
       render: (hits) => (hits || []).map((s) => <Tag key={s} color="green">{s}</Tag>),
     },
     {
-      title: '技能缺失', dataIndex: 'skillGaps', ellipsis: true,
+      title: '待核实技能', dataIndex: 'skillGaps', ellipsis: true,
       render: (gaps) => (gaps || []).map((s) => <Tag key={s} color="red">{s}</Tag>),
     },
     { title: 'HR 决策', dataIndex: 'hrDecision', width: 100, render: decisionTag },
@@ -398,10 +458,14 @@ export default function PositionWorkbenchPage() {
 
   return (
     <div>
+      <PageIntro eyebrow="CANDIDATE WORKSPACE" title={position?.title || '岗位候选人工作台'}>先上传简历，再查看匹配依据并进行人工筛选；通过初筛后，为候选人准备面试题与评估报告。</PageIntro>
+      <div className="workflow-guide workbench-guide">
+        {[[resumes.length > 0, '01', '上传简历', `${resumes.length} 份已收录`], [matches.length > 0, '02', '查看匹配', `${matches.length} 位已评分`], [matches.some(m => m.hrDecision === 'APPROVED'), '03', '准备面试', '人工通过后生成面试资料']].map(([done, n, title, hint]) => <div key={n}><span className={`step-number ${done ? 'step-done' : ''}`}>{done ? <CheckOutlined /> : n}</span><div><strong>{title}</strong><p>{hint}</p></div></div>)}
+      </div>
       <Card
         title={
           <Space>
-            <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/recruitment')} />
+            <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/recruitment')} aria-label="返回岗位列表" />
             <span>{position ? position.title : '岗位工作台'}</span>
             {position && <Tag color={position.status === 'OPEN' ? 'green' : 'default'}>{position.status === 'OPEN' ? '招聘中' : '已关闭'}</Tag>}
           </Space>
@@ -413,14 +477,30 @@ export default function PositionWorkbenchPage() {
                 {uploading ? '解析中…' : '上传简历'}
               </Button>
             </Upload>
-            <Button type="primary" icon={<ThunderboltOutlined />} loading={matching} onClick={handleRunMatch}>
-              {matching ? '匹配中…' : '执行人岗匹配'}
+            <Button type="primary" icon={<ThunderboltOutlined />} loading={matching || taskLoading} disabled={!!taskError || !resumes.some(r => r.parseStatus === 'PARSED') || position?.status === 'CLOSED'} onClick={handleRunMatch}>
+              {taskLoading ? '查询匹配状态…' : taskActive ? (matchTask.status === 'QUEUED' ? '等待匹配…' : '匹配中…') : matchTask?.status === 'FAILED' ? '重试人岗匹配' : '执行人岗匹配'}
             </Button>
           </Space>
         }
       >
+        {taskError && <Alert type="warning" showIcon message={taskError} style={{ marginBottom: 16 }}
+          action={<Button size="small" onClick={() => setPollVersion(v => v + 1)}>刷新状态</Button>} />}
+        {matchTask && <Alert style={{ marginBottom: 16 }} showIcon
+          type={matchTask.status === 'FAILED' ? 'error' : matchTask.status === 'SUCCEEDED' ? (matchTask.degradedCount ? 'warning' : 'success') : 'info'}
+          message={taskActive ? (matchTask.status === 'QUEUED' ? '匹配任务已排队，刷新页面后仍可查看' : '正在执行匹配，刷新页面后仍可查看')
+            : matchTask.status === 'FAILED' ? (matchTask.errorMessage || '匹配失败，可重新匹配')
+              : matchTask.status === 'CANCELLED' ? '匹配任务已取消，原结果保留'
+                : matchTask.degradedCount ? `匹配完成，${matchTask.degradedCount} 位候选人的语义评分未完成，仅使用规则分` : `匹配完成，共 ${matchTask.candidateCount} 位候选人`}
+          description={taskActive ? <>
+            <div>{({ QUEUED: '等待执行', RULE_SCORING: '计算规则分', SEMANTIC_SCORING: '评估技能匹配', SAVING: '保存结果' })[matchTask.phase] || '处理中'} · 已处理 {matchTask.completedBatches}/{matchTask.totalBatches} 批</div>
+            <Progress percent={Math.min(99, Math.round(100 * matchTask.completedBatches / Math.max(1, matchTask.totalBatches)))} size="small" />
+            {matches.length > 0 && <div>下方暂时保留上一轮匹配结果，任务成功后更新。</div>}
+          </> : null}
+          action={taskActive ? <Popconfirm title="取消本轮匹配？" description="已发出的模型请求可能仍会计费；任务终止后不写入结果。" okText="取消本轮" cancelText="继续执行" onConfirm={handleCancelMatch}>
+            <Button size="small">取消匹配</Button>
+          </Popconfirm> : null} />}
         {position && (
-          <Descriptions bordered size="small" column={4} style={{ marginBottom: 16 }}>
+          <Descriptions bordered size="small" column={{ xs: 1, sm: 2, lg: 4 }} style={{ marginBottom: 16 }}>
             <Descriptions.Item label="部门">{position.department || '-'}</Descriptions.Item>
             <Descriptions.Item label="城市">{position.city || '-'}</Descriptions.Item>
             <Descriptions.Item label="薪资">{position.salaryMin ?? '-'}~{position.salaryMax ?? '-'}k</Descriptions.Item>
@@ -436,15 +516,15 @@ export default function PositionWorkbenchPage() {
 
         <Card
           type="inner"
-          title={`候选人匹配榜（${matches.length}）`}
+          title={`辅助筛选 · 候选人匹配（${matches.length}）`}
           style={{ marginBottom: 16 }}
           extra={<Button icon={<ReloadOutlined />} onClick={loadMatches} loading={loadingMatches} size="small">刷新</Button>}
         >
           {matches.length === 0 && !loadingMatches ? (
-            <Empty description="尚未执行匹配，点击右上角「执行人岗匹配」" />
+            <Empty description={resumes.some(r => r.parseStatus === 'PARSED') ? '简历已就绪。点击「执行人岗匹配」，查看技能命中、待核实项与评分依据。' : '请先上传简历；成功解析后，即可执行人岗匹配。'} />
           ) : (
             <Table columns={matchColumns} dataSource={matches} rowKey="id"
-              loading={loadingMatches} pagination={false} size="middle" />
+              loading={loadingMatches} pagination={false} scroll={{ x: 1100 }} size="middle" />
           )}
         </Card>
 
@@ -453,18 +533,21 @@ export default function PositionWorkbenchPage() {
           title={`简历库（${resumes.length}）`}
           extra={<Button icon={<ReloadOutlined />} onClick={loadResumes} loading={loadingResumes} size="small">刷新</Button>}
         >
+          <ResumeParseTaskPanel state={resumeParse} selectedIds={selectedResumes} onSubmitted={() => setSelectedResumes([])} closed={position?.status === 'CLOSED'} />
           <Table columns={resumeColumns} dataSource={resumes} rowKey="id"
-            loading={loadingResumes} pagination={false} size="middle" />
+            rowSelection={{ selectedRowKeys: selectedResumes, onChange: setSelectedResumes,
+              getCheckboxProps: r => ({ disabled: !r.retryable || resumeParse.busy || position?.status === 'CLOSED' }) }}
+            loading={loadingResumes} pagination={false} scroll={{ x: 1000 }} size="middle" locale={{ emptyText: '还没有候选人。点击上方「上传简历」，把人选整理到这个岗位。' }} />
         </Card>
       </Card>
 
-      <QuestionsDrawer
+      <QuestionsDrawer key={qDrawer.resumeId || "questions"}
         open={qDrawer.open}
         onClose={() => setQDrawer({ ...qDrawer, open: false })}
         resumeId={qDrawer.resumeId}
         candidateName={qDrawer.name}
       />
-      <ReportDrawer
+      <ReportDrawer key={rDrawer.resumeId || "report"}
         open={rDrawer.open}
         onClose={() => setRDrawer({ ...rDrawer, open: false })}
         resumeId={rDrawer.resumeId}
