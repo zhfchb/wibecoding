@@ -9,6 +9,7 @@ import AgentPage from './pages/AgentPage.jsx'
 import KnowledgePage from './pages/KnowledgePage.jsx'
 import RecruitmentPage from './pages/RecruitmentPage.jsx'
 import PositionWorkbenchPage from './pages/PositionWorkbenchPage.jsx'
+import InterviewWorkbenchPage from './pages/InterviewWorkbenchPage.jsx'
 
 // 路由守卫：未登录跳转 /login
 function ProtectedRoute({ children }) {
@@ -18,6 +19,8 @@ function ProtectedRoute({ children }) {
 }
 
 export default function App() {
+  const { user } = useAuth()
+  const interviewer = user?.companyRole === 'INTERVIEWER'
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
@@ -29,15 +32,16 @@ export default function App() {
           </ProtectedRoute>
         }
       >
-        <Route index element={<Navigate to="/recruitment" replace />} />
+        <Route index element={<Navigate to={interviewer ? '/interviews' : '/recruitment'} replace />} />
+        <Route path="interviews" element={<InterviewWorkbenchPage />} />
         <Route path="company/departments" element={<DepartmentsPage />} />
         <Route path="company/profile" element={<CompanyPage key="profile" />} />
         <Route path="company/members" element={<CompanyPage key="members" members />} />
         <Route path="chat" element={<ChatPage />} />
         <Route path="agent" element={<AgentPage />} />
         <Route path="knowledge" element={<KnowledgePage />} />
-        <Route path="recruitment" element={<RecruitmentPage />} />
-        <Route path="recruitment/positions/:id" element={<PositionWorkbenchPage />} />
+        <Route path="recruitment" element={interviewer ? <Navigate to="/interviews" replace /> : <RecruitmentPage />} />
+        <Route path="recruitment/positions/:id" element={interviewer ? <Navigate to="/interviews" replace /> : <PositionWorkbenchPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

@@ -37,7 +37,7 @@ public class PositionCollaborationService {
         if(userId==null || Objects.equals(userId,access.user())) throw new IllegalArgumentException("请选择本公司的其他成员");
         if(position.getCompanyId()!=null && !Objects.equals(position.getCompanyId(),company.id()))
             throw new IllegalArgumentException("岗位公司归属与当前成员关系不一致，请先核对");
-        if(db.queryForObject("SELECT COUNT(*) FROM recruitment_company_member WHERE company_id=? AND user_id=?",Long.class,company.id(),userId)==0)
+        if(db.queryForObject("SELECT COUNT(*) FROM recruitment_company_member WHERE company_id=? AND user_id=? AND role IN ('ADMIN','HR')",Long.class,company.id(),userId)==0)
             throw new IllegalArgumentException("只能授权本公司的成员");
         if(position.getCompanyId()==null) {
             long active=db.queryForObject("""

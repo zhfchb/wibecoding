@@ -5,6 +5,8 @@ Spring Boot 管理招聘业务，Python LangChain / LangGraph 承担 AI 能力�
 
 公司管理已支持公司资料、成员与部门目录，管理员维护部门，HR只读；岗位支持部门关联，以及指定同公司成员只读或招聘流程协作。任务记录实际发起人并校验撤权、取消责任，私人知识库及聊天不共享。参见[用户与阶段规划](docs/product/用户定位与角色权限.md)及[流程协作验收](docs/acceptance/POSITION_OPERATIONS.md)。
 
+面试官可使用独立工作台查看获分配候选人的必要资料、保存私有草稿并提交人工评价；提交后锁定，招聘负责人查看已提交结果，HR筛选决策保持独立。见[面试分配验收](docs/acceptance/INTERVIEW_ASSIGNMENTS.md)。
+
 ## 当前架构
 
 ```text

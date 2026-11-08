@@ -24,7 +24,9 @@ public class PositionDepartmentService {
 
     @Transactional
     public void create(JobPositionEntity entity, Long departmentId) {
-        entity.setCompanyId(companies.current().id());
+        var company=companies.current();
+        if("INTERVIEWER".equals(company.memberRole())) throw new ResponseStatusException(HttpStatus.FORBIDDEN);
+        entity.setCompanyId(company.id());
         if (departmentId != null) select(entity, departmentId);
         positions.insert(entity);
     }

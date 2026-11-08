@@ -59,11 +59,13 @@ public class RecruitmentServiceImpl implements RecruitmentService {
     private final com.example.agent.service.resumes.ResumeProfileReader resumeProfiles;
     private final com.example.agent.service.company.PositionDepartmentService positionDepartments;
     private final com.example.agent.service.company.PositionAccess positionAccess;
+    private final com.example.agent.service.company.InterviewAssignmentService interviewAssignments;
 
     // ==================== 岗位管理 ====================
 
     @Override
     public PositionResponse createPosition(PositionRequest request) {
+        positionAccess.ensureRecruiter();
         validatePosition(request);
         Long userId = SecurityUtils.getCurrentUserId();
         JobPositionEntity entity = new JobPositionEntity();
@@ -78,6 +80,7 @@ public class RecruitmentServiceImpl implements RecruitmentService {
 
     @Override
     public PositionResponse importPosition(MultipartFile file) {
+        positionAccess.ensureRecruiter();
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("请选择要上传的 JD 文档");
         }
@@ -275,7 +278,7 @@ public class RecruitmentServiceImpl implements RecruitmentService {
         if (resume == null) {
             throw new IllegalArgumentException("简历不存在");
         }
-        JobPositionEntity position = requireOwnedPosition(resume.getPositionId());
+        JobPositionEntity position = positionAccess.lockOwned(resume.getPositionId());
         // 权限：简历必须挂在当前用户自己的岗位下
         if (position == null) {
             throw new IllegalArgumentException("简历不存在或无权删除");
@@ -284,6 +287,7 @@ public class RecruitmentServiceImpl implements RecruitmentService {
     }
 
     private void deleteResumeInternal(CandidateResumeEntity resume) {
+        interviewAssignments.cleanupForResume(resume.getId());
         // 连带删除向量与文档元数据
         if (StringUtils.hasText(resume.getDocId())) {
             try {

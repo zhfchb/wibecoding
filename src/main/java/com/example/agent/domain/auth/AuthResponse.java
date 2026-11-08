@@ -12,4 +12,9 @@ public class AuthResponse {
     private Long userId;
     private String username;
     private String role;
+    private String companyRole;
+
+    public AuthResponse(String token,String tokenType,Long userId,String username,String role) {
+        this(token,tokenType,userId,username,role,null);
+    }
 }

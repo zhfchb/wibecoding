@@ -25,7 +25,8 @@ public class TaskAuthority {
         return rows.isEmpty()?new Actor(owner,null):rows.get(0);
     }
     private String revision(Long positionId,Long actor) {
-        var values=db.queryForList("SELECT revision FROM recruitment_position_viewer WHERE position_id=? AND user_id=?",String.class,positionId,actor);
+        boolean lock=org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive();
+        var values=db.queryForList("SELECT revision FROM recruitment_position_viewer WHERE position_id=? AND user_id=?"+(lock?" FOR UPDATE":""),String.class,positionId,actor);
         return values.isEmpty()?null:values.get(0);
     }
     public void register(String kind,String taskId,Long positionId,Long owner) {
@@ -37,7 +38,8 @@ public class TaskAuthority {
     public void before(String kind,String taskId,Long positionId,Long owner) {
         var actor=actor(kind,taskId,owner);
         try {
-            var position=access.operator(positionId,actor.id(),false);
+            boolean lock=org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive();
+            var position=access.operator(positionId,actor.id(),lock);
             if(!Objects.equals(position.getUserId(),owner) || (!Objects.equals(owner,actor.id()) &&
                     (actor.revision()==null || !Objects.equals(actor.revision(),revision(positionId,actor.id()))))) throw new Revoked();
         } catch(ResponseStatusException e) { throw new Revoked(); }

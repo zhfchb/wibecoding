@@ -41,11 +41,11 @@ export default function CompanyPage({ members = false }) {
   }
   const admin = company?.memberRole === 'ADMIN'
   return <Card title={members ? '成员管理' : '公司资料'} loading={loading}
-    extra={<Space><Button onClick={load}>刷新</Button>{members && admin && <Button type="primary" onClick={() => setOpen(true)}>新增HR成员</Button>}</Space>}>
+    extra={<Space><Button onClick={load}>刷新</Button>{members && admin && <Button type="primary" onClick={() => setOpen(true)}>新增公司成员</Button>}</Space>}>
     {error ? <Alert type="error" message="无法加载公司资料，请重试" action={<Button onClick={load}>重试</Button>} /> : company && <>
         <Alert type="info" style={{ marginBottom: 20 }} message="公司目录由本公司成员共享；招聘资料默认仅创建人可见，可在岗位详情授予指定成员只读或招聘协作权限。私人知识库和聊天不共享。" />
       {members ? <Table rowKey="userId" dataSource={rows} pagination={false} columns={[
-        { title: '账号', dataIndex: 'username' }, { title: '公司角色', dataIndex: 'role', render: role => <Tag>{role === 'ADMIN' ? '公司管理员' : 'HR'}</Tag> },
+        { title: '账号', dataIndex: 'username' }, { title: '公司角色', dataIndex: 'role', render: role => <Tag>{({ ADMIN: '公司管理员', HR: 'HR', INTERVIEWER: '面试官' })[role] || role}</Tag> },
       ]} /> : <Form form={form} layout="vertical" onFinish={save} disabled={!admin} onValuesChange={changed => {
         if (changed.profile && Object.prototype.hasOwnProperty.call(changed.profile, 'provinceCode')) form.setFieldValue(['profile', 'cityCode'], undefined)
       }}>
@@ -74,8 +74,9 @@ export default function CompanyPage({ members = false }) {
         {admin && <Button type="primary" htmlType="submit" loading={saving}>保存公司资料</Button>}
       </Form>}
     </>}
-    <Modal title="新增HR账号" open={open} onCancel={() => { setOpen(false); memberForm.resetFields() }} onOk={add} confirmLoading={saving} okText="创建" cancelText="取消">
-      <Form form={memberForm} layout="vertical" autoComplete="off">
+    <Modal title="新增公司成员" open={open} onCancel={() => { setOpen(false); memberForm.resetFields() }} onOk={add} confirmLoading={saving} okText="创建" cancelText="取消">
+      <Form form={memberForm} layout="vertical" autoComplete="off" initialValues={{ role: 'HR' }}>
+        <Form.Item name="role" label="公司角色" rules={[{ required: true }]}><Select options={[{ value: 'HR', label: 'HR / 招聘负责人' }, { value: 'INTERVIEWER', label: '面试官' }]} /></Form.Item>
         <Form.Item name="username" label="账号" rules={[{ required: true }, { pattern: /^[A-Za-z0-9_-]{3,32}$/, message: '3～32位字母数字、下划线或连字符' }]}><Input autoComplete="off" /></Form.Item>
         <Form.Item name="password" label="初始密码" rules={[{ required: true, min: 8, max: 64, message: '请输入8～64位初始密码' }]}><Input.Password autoComplete="new-password" /></Form.Item>
       </Form>

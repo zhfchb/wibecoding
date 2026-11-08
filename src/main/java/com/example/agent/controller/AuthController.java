@@ -34,6 +34,13 @@ import java.security.Principal;
 @RequestMapping("/api/v1/auth")
 @RequiredArgsConstructor
 public class AuthController {
+    private final org.springframework.jdbc.core.JdbcTemplate db;
+
+    private AuthResponse response(String token,String type,UserEntity user) {
+        var result=new AuthResponse(token,type,user.getId(),user.getUsername(),user.getRole());
+        var roles=db.queryForList("SELECT role FROM recruitment_company_member WHERE user_id=?",String.class,user.getId());
+        result.setCompanyRole(roles.isEmpty()?null:roles.get(0));return result;
+    }
 
     private final UserMapper userMapper;
     private final PasswordEncoder passwordEncoder;
@@ -56,7 +63,7 @@ public class AuthController {
         user.setRole("USER");
         userMapper.insert(user);
         String token = tokenProvider.generate(user.getId(), user.getUsername(), user.getRole());
-        return new AuthResponse(token, "Bearer", user.getId(), user.getUsername(), user.getRole());
+        return response(token,"Bearer",user);
     }
 
     /** 登录:用 AuthenticationManager 校验密码,通过后签发 JWT */
@@ -68,7 +75,7 @@ public class AuthController {
         UserEntity user = userMapper.selectOne(
                 new LambdaQueryWrapper<UserEntity>().eq(UserEntity::getUsername, authentication.getName()));
         String token = tokenProvider.generate(user.getId(), user.getUsername(), user.getRole());
-        return new AuthResponse(token, "Bearer", user.getId(), user.getUsername(), user.getRole());
+        return response(token,"Bearer",user);
     }
 
     /** 查当前登录用户(从 JWT 解出来的 principal 就是 username) */
@@ -78,6 +85,6 @@ public class AuthController {
     public AuthResponse me(Principal principal) {
         UserEntity user = userMapper.selectOne(
                 new LambdaQueryWrapper<UserEntity>().eq(UserEntity::getUsername, principal.getName()));
-        return new AuthResponse(null, null, user.getId(), user.getUsername(), user.getRole());
+        return response(null,null,user);
     }
 }

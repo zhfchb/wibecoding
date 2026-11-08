@@ -2,6 +2,7 @@
 from playwright.sync_api import sync_playwright, expect
 from urllib.parse import urlparse
 import re
+import os
 import json
 from pathlib import Path
 
@@ -15,7 +16,7 @@ def api(route):
         data = {'regions': json.loads(Path('src/main/resources/company-regions.json').read_text(encoding='utf-8')), 'industries': ['互联网与软件', '其他'], 'scales': ['1～20人', '21～99人'], 'natures': ['民营企业']}
     elif path.endswith('/members'):
         if route.request.method == 'POST':
-            data = {'userId': 2, 'username': route.request.post_data_json['username'], 'role': 'HR'}
+            data = {'userId': len(state['members']) + 1, 'username': route.request.post_data_json['username'], 'role': route.request.post_data_json.get('role', 'HR')}
             state['members'].append(data)
             state['writes'] += 1
         else:
@@ -38,7 +39,7 @@ with sync_playwright() as p:
     page.on('pageerror', lambda e: errors.append(str(e)))
     page.add_init_script("localStorage.setItem('token','fixture');localStorage.setItem('user',JSON.stringify({userId:1,username:'owner',role:'USER'}));")
     page.route('**/api/v1/**', api)
-    page.goto('http://127.0.0.1:5188/company/profile')
+    page.goto(os.environ.get('POSITION_UI_URL', 'http://127.0.0.1:5173') + '/company/profile')
     page.wait_for_load_state('networkidle')
     page.get_by_label('公司全称').fill('更新公司')
     expect(page.get_by_text('公司资料待完善', exact=False)).to_be_visible()
@@ -73,18 +74,25 @@ with sync_playwright() as p:
     assert state['company']['profile']['provinceCode'] == '310000'
     assert state['company']['profile']['cityCode'] == '310000'
     page.get_by_role('menuitem', name='成员管理', exact=True).click()
-    page.get_by_role('button', name='新增HR成员', exact=True).click()
+    page.get_by_role('button', name='新增公司成员', exact=True).click()
     page.get_by_label('账号', exact=True).fill('test_hr')
     page.get_by_label('初始密码', exact=True).fill('fixture-password')
     page.get_by_role('button', name=re.compile('^创\s*建$')).click()
     expect(page.get_by_role('cell', name='test_hr', exact=True)).to_be_visible()
+    page.get_by_role('button', name='新增公司成员', exact=True).click()
+    page.get_by_label('公司角色', exact=True).press('ArrowDown')
+    page.locator('.ant-select-dropdown:visible').get_by_text('面试官', exact=True).click()
+    page.get_by_label('账号', exact=True).fill('test_interviewer')
+    page.get_by_label('初始密码', exact=True).fill('fixture-password')
+    page.get_by_role('button', name=re.compile('^创\s*建$')).click()
+    expect(page.get_by_role('cell', name='test_interviewer', exact=True)).to_be_visible()
     state['company']['memberRole'] = 'HR'
     page.reload()
     page.wait_for_load_state('networkidle')
-    expect(page.get_by_role('button', name='新增HR成员', exact=True)).not_to_be_visible()
+    expect(page.get_by_role('button', name='新增公司成员', exact=True)).not_to_be_visible()
     page.get_by_role('menuitem', name='公司资料', exact=True).click()
     expect(page.get_by_label('公司全称')).to_be_disabled()
-    assert state['writes'] == 2
+    assert state['writes'] == 3
     assert not errors, errors
     browser.close()
 print('PASS company fixture: legacy completion notice, required fields, province/city clearing, municipality, email validation, profile save, members and HR read-only controls')

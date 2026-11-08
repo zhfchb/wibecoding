@@ -22,7 +22,7 @@ public class PositionAccess {
     private final CandidateResumeMapper resumes;
     private static final String GRANTED = """
         EXISTS (SELECT 1 FROM recruitment_position_viewer v
-          JOIN recruitment_company_member reader_member ON reader_member.user_id=v.user_id AND reader_member.company_id=p.company_id
+          JOIN recruitment_company_member reader_member ON reader_member.user_id=v.user_id AND reader_member.company_id=p.company_id AND reader_member.role IN ('ADMIN','HR')
           JOIN recruitment_company_member creator_member ON creator_member.user_id=p.user_id AND creator_member.company_id=p.company_id
           WHERE v.position_id=p.id AND v.user_id=? AND v.granted_by=p.user_id AND v.permission IN ('VIEWER','EDITOR'))
         """;
@@ -33,7 +33,13 @@ public class PositionAccess {
         return id;
     }
     public boolean manages(JobPositionEntity position) {
-        return position!=null && SecurityUtils.getCurrentUserId()!=null && Objects.equals(position.getUserId(),SecurityUtils.getCurrentUserId());
+        return position!=null && SecurityUtils.getCurrentUserId()!=null && Objects.equals(position.getUserId(),SecurityUtils.getCurrentUserId()) && recruiter(SecurityUtils.getCurrentUserId());
+    }
+    private boolean recruiter(Long actor) {
+        return !db.queryForList("SELECT role FROM recruitment_company_member WHERE user_id=?",String.class,actor).contains("INTERVIEWER");
+    }
+    public void ensureRecruiter() {
+        if(!recruiter(user())) throw new ResponseStatusException(HttpStatus.FORBIDDEN);
     }
     public JobPositionEntity owned(Long id) {
         user();var position=positions.selectById(id);
@@ -49,11 +55,26 @@ public class PositionAccess {
         return "OWNER".equals(permission(position,user())) || "EDITOR".equals(permission(position,user()));
     }
     public String permission(JobPositionEntity position,Long actor) {
-        if(position==null || actor==null) return null;
+        return permission(position,actor,false);
+    }
+    private String permission(JobPositionEntity position,Long actor,boolean lock) {
+        if(position==null || actor==null || !recruiter(actor)) return null;
         if(Objects.equals(position.getUserId(),actor)) return "OWNER";
+        if(lock) {
+            // A transaction may have started a repeatable-read snapshot before waiting on the job.
+            // Read the grant itself currently, without locking shared company member rows across jobs.
+            var current=db.queryForList("SELECT permission FROM recruitment_position_viewer WHERE position_id=? AND user_id=? AND granted_by=? FOR UPDATE",
+                    String.class,position.getId(),actor,position.getUserId());
+            if(current.isEmpty()) return null;
+            long membership=db.queryForObject("""
+                SELECT COUNT(*) FROM recruitment_company_member a JOIN recruitment_company_member c ON c.company_id=a.company_id
+                WHERE a.user_id=? AND a.company_id=? AND a.role IN ('ADMIN','HR') AND c.user_id=? AND c.role IN ('ADMIN','HR')
+                """,Long.class,actor,position.getCompanyId(),position.getUserId());
+            return membership==0?null:current.get(0);
+        }
         var roles=db.queryForList("""
             SELECT v.permission FROM recruitment_position_viewer v
-            JOIN recruitment_company_member a ON a.user_id=v.user_id AND a.company_id=?
+            JOIN recruitment_company_member a ON a.user_id=v.user_id AND a.company_id=? AND a.role IN ('ADMIN','HR')
             JOIN recruitment_company_member c ON c.user_id=? AND c.company_id=a.company_id
             WHERE v.position_id=? AND v.user_id=? AND v.granted_by=?
             """,String.class,position.getCompanyId(),position.getUserId(),position.getId(),actor,position.getUserId());
@@ -61,12 +82,13 @@ public class PositionAccess {
     }
     public JobPositionEntity operator(Long id,Long actor,boolean lock) {
         var position=lock?positions.lockById(id):positions.selectById(id);
-        String permission=permission(position,actor);
+        String permission=permission(position,actor,lock);
         if(!"OWNER".equals(permission) && !"EDITOR".equals(permission)) throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         return position;
     }
     public List<Long> visibleIds() {
         Long user=user();
+        if(!recruiter(user)) return List.of();
         return db.queryForList("SELECT p.id FROM job_position p WHERE p.user_id=? OR "+GRANTED,Long.class,user,user);
     }
     public JobPositionEntity readable(Long id) {

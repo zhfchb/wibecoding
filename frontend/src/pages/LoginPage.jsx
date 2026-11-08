@@ -13,8 +13,8 @@ export default function LoginPage() {
   const submit = async ({ username, password }) => {
     setLoading(true); setError('')
     try {
-      await (mode === 'login' ? login : register)(username, password)
-      navigate('/recruitment', { replace: true })
+      const account = await (mode === 'login' ? login : register)(username, password)
+      navigate(account.companyRole === 'INTERVIEWER' ? '/interviews' : '/recruitment', { replace: true })
     } catch (err) {
       setError(err.response?.data?.message || (mode === 'login' ? '登录失败，请检查用户名和密码。' : '注册失败，请稍后重试。'))
     } finally { setLoading(false) }

@@ -11,8 +11,8 @@ export function AuthProvider({ children }) {
 
   const login = useCallback(async (username, password) => {
     const resp = await authApi.login(username, password)
-    const { token, username: name, role, userId } = resp.data
-    const userInfo = { username: name, role, userId }
+    const { token, username: name, role, userId, companyRole } = resp.data
+    const userInfo = { username: name, role, userId, companyRole }
     localStorage.setItem('token', token)
     localStorage.setItem('user', JSON.stringify(userInfo))
     setUser(userInfo)
@@ -21,8 +21,8 @@ export function AuthProvider({ children }) {
 
   const register = useCallback(async (username, password) => {
     const resp = await authApi.register(username, password)
-    const { token, username: name, role, userId } = resp.data
-    const userInfo = { username: name, role, userId }
+    const { token, username: name, role, userId, companyRole } = resp.data
+    const userInfo = { username: name, role, userId, companyRole }
     localStorage.setItem('token', token)
     localStorage.setItem('user', JSON.stringify(userInfo))
     setUser(userInfo)

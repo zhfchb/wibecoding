@@ -27,7 +27,9 @@ public class CompanyService {
     }
     public java.util.Map<String,Object> options() { return catalog.options(); }
     public record Member(Long userId,String username,String role) {}
-    public record NewMember(String username,String password) {}
+    public record NewMember(String username,String password,String role) {
+        public NewMember(String username,String password) { this(username,password,"HR"); }
+    }
 
     /** Provision per user, under a user-row lock. Existing accounts are never silently merged. */
     @Transactional
@@ -76,14 +78,16 @@ public class CompanyService {
     @Transactional
     public Member addMember(NewMember input) {
         var company=current();admin(company);
+        String role=input==null || input.role()==null?"HR":input.role();
+        if(!List.of("HR","INTERVIEWER").contains(role)) throw new IllegalArgumentException("请选择HR或面试官角色");
         if (input==null || input.username()==null || !input.username().matches("[A-Za-z0-9_-]{3,32}")
                 || input.password()==null || input.password().length()<8 || input.password().length()>64)
             throw new IllegalArgumentException("账号须为3～32位字母数字或下划线/连字符，初始密码须为8～64位");
         var user=new UserEntity();user.setUsername(input.username());user.setPassword(passwords.encode(input.password()));user.setRole("USER");
         try { users.insert(user); }
         catch (DuplicateKeyException e) { throw new IllegalArgumentException("账号已存在，请使用新的账号名称"); }
-        db.update("INSERT INTO recruitment_company_member (user_id,company_id,role) VALUES (?,?,'HR')",user.getId(),company.id());
-        return new Member(user.getId(),user.getUsername(),"HR");
+        db.update("INSERT INTO recruitment_company_member (user_id,company_id,role) VALUES (?,?,?)",user.getId(),company.id(),role);
+        return new Member(user.getId(),user.getUsername(),role);
     }
     private void admin(Company company) {
         if (!"ADMIN".equals(company.memberRole())) throw new ResponseStatusException(HttpStatus.FORBIDDEN);
