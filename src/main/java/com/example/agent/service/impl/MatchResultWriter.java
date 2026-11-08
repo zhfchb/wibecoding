@@ -29,6 +29,7 @@ public class MatchResultWriter {
     private final MatchTaskStore tasks;
     private final MatchInputReader inputs;
     private final ObjectMapper json;
+    private final com.example.agent.service.company.TaskAuthority authority;
 
     @Transactional
     public void save(Long positionId, List<MatchResultEntity> results) {
@@ -50,6 +51,7 @@ public class MatchResultWriter {
             throw new IllegalArgumentException("岗位已关闭，不能执行匹配");
         }
         var task = taskId == null ? null : tasks.lock(taskId);
+        if(task!=null) authority.before("MATCH",taskId,positionId,task.ownerId());
         if (taskId != null && (task == null || !"RUNNING".equals(task.view().status())
                 || !task.view().deadlineAt().isAfter(java.time.LocalDateTime.now()))) {
             throw new MatchTaskFailure("TASK_INACTIVE", "任务已终止或超时，未写入匹配结果");

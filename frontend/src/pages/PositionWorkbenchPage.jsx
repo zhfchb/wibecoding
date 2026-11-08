@@ -14,6 +14,7 @@ import { recruitmentApi } from '../api'
 import PageIntro from '../components/PageIntro'
 import PositionDepartmentEditor from '../components/PositionDepartmentEditor'
 import PositionCollaborators from '../components/PositionCollaborators'
+import PositionActivity from '../components/PositionActivity'
 import ResumeParseTaskPanel from '../components/ResumeParseTaskPanel'
 import useResumeParseTask from '../hooks/useResumeParseTask'
 import useMaterialTask from '../hooks/useMaterialTask'
@@ -205,6 +206,7 @@ export default function PositionWorkbenchPage() {
   const navigate = useNavigate()
   const [position, setPosition] = useState(null)
   const canManage = position?.canManage === true
+  const canOperate = canManage || position?.canOperate === true
   const [accessDenied, setAccessDenied] = useState(false)
   const [resumes, setResumes] = useState([])
   const [selectedResumes, setSelectedResumes] = useState([])
@@ -242,7 +244,7 @@ export default function PositionWorkbenchPage() {
     }
   }, [id])
 
-  const resumeParse = useResumeParseTask(id, loadResumes, canManage)
+  const resumeParse = useResumeParseTask(id, loadResumes, canOperate)
   useEffect(() => { setSelectedResumes([]) }, [id])
   useEffect(() => {
     setSelectedResumes(ids => ids.filter(key => resumes.some(r => r.id === key && r.retryable)))
@@ -273,7 +275,7 @@ export default function PositionWorkbenchPage() {
 
   // The server is the source of truth; no localStorage task IDs or overlapping interval requests.
   useEffect(() => {
-    if (!canManage) { setMatchTask(null); setTaskLoading(false); setTaskError(''); return }
+    if (!canOperate) { setMatchTask(null); setTaskLoading(false); setTaskError(''); return }
     let active = true
     let timer
     let lastTerminal = ''
@@ -303,13 +305,13 @@ export default function PositionWorkbenchPage() {
     }
     poll()
     return () => { active = false; clearTimeout(timer) }
-  }, [id, loadMatches, pollVersion, canManage])
+  }, [id, loadMatches, pollVersion, canOperate])
 
   // Recheck a read grant while the page remains open; never poll owner-only task APIs as a viewer.
   useEffect(() => {
     if (!position || canManage) return
     let active = true
-    const timer = setInterval(() => recruitmentApi.getPosition(id).catch(err => {
+    const timer = setInterval(() => recruitmentApi.getPosition(id).then(resp => { if(active) setPosition(resp.data) }).catch(err => {
       if (active && [403, 404].includes(err.response?.status)) denyAccess()
     }), 10000)
     return () => { active = false; clearInterval(timer) }
@@ -408,7 +410,7 @@ export default function PositionWorkbenchPage() {
       title: '操作', key: 'action', width: 260,
       render: (_, record) => (
         <Space>
-          {canManage && record.retryable && <Button type="link" size="small" disabled={resumeParse.busy || position?.status === 'CLOSED'} onClick={() => resumeParse.submit([record.id])}>重新解析</Button>}
+          {canOperate && record.retryable && <Button type="link" size="small" disabled={resumeParse.busy || position?.status === 'CLOSED'} onClick={() => resumeParse.submit([record.id])}>重新解析</Button>}
           <Button type="link" size="small" onClick={() => setQDrawer({ open: true, resumeId: record.id, name: record.candidateName })}>
             面试题
           </Button>
@@ -460,7 +462,7 @@ export default function PositionWorkbenchPage() {
       title: '操作', key: 'action', width: 230,
       render: (_, record) => (
         <Space>
-          {canManage && record.hrDecision === 'PENDING' && (
+          {canOperate && record.hrDecision === 'PENDING' && (
             <>
               <Popconfirm title="通过该候选人？" description="通过后可生成面试题与评估报告" onConfirm={() => handleDecide(record.id, true)}>
                 <Button type="primary" size="small" icon={<CheckOutlined />}>通过</Button>
@@ -484,9 +486,10 @@ export default function PositionWorkbenchPage() {
   if (accessDenied) return <Alert type="warning" showIcon message="岗位不可访问或授权已撤销" description="请联系岗位创建人确认授权。" action={<Button onClick={() => navigate('/recruitment')}>返回岗位列表</Button>} />
 
   return (
-    <div>
-      {position && !canManage && <Alert style={{ marginBottom: 16 }} type="info" showIcon message="只读协作岗位" description="你可以查看候选人与已有评估资料。上传、删除、筛选决策、部门修改及AI任务由创建人操作。" />}
-      <PageIntro eyebrow="CANDIDATE WORKSPACE" title={position?.title || '岗位候选人工作台'}>{canManage ? '先上传简历，再查看匹配依据并进行人工筛选；通过初筛后，为候选人准备面试题与评估报告。' : '查看创建人分享的候选人与已有评估资料，辅助招聘讨论；资料维护和流程操作由创建人负责。'}</PageIntro>
+    <div className="recruitment-workbench">
+      {position && !canManage && canOperate && <Alert style={{ marginBottom: 16 }} type="info" showIcon message="招聘协作岗位" description="可筛选决策并发起AI任务，模型调用可能计费。你仅可取消自己发起的任务；岗位修改、上传删除和授权由创建人负责。" />}
+      {position && !canOperate && <Alert style={{ marginBottom: 16 }} type="info" showIcon message="只读协作岗位" description="你可以查看候选人与已有评估资料。上传、删除、筛选决策、部门修改及AI任务由创建人操作。" />}
+      <PageIntro eyebrow="CANDIDATE WORKSPACE" title={position?.title || '岗位候选人工作台'}>{canManage ? '先上传简历，再查看匹配依据并进行人工筛选；通过初筛后，为候选人准备面试题与评估报告。' : canOperate ? '协同完成候选人筛选、匹配及面试资料准备；操作人和任务发起人可在操作记录中查看。' : '查看创建人分享的候选人与已有评估资料，辅助招聘讨论；资料维护和流程操作由创建人负责。'}</PageIntro>
       <div className="workflow-guide workbench-guide">
         {[[resumes.length > 0, '01', '上传简历', `${resumes.length} 份已收录`], [matches.length > 0, '02', '查看匹配', `${matches.length} 位已评分`], [matches.some(m => m.hrDecision === 'APPROVED'), '03', '准备面试', '人工通过后生成面试资料']].map(([done, n, title, hint]) => <div key={n}><span className={`step-number ${done ? 'step-done' : ''}`}>{done ? <CheckOutlined /> : n}</span><div><strong>{title}</strong><p>{hint}</p></div></div>)}
       </div>
@@ -499,13 +502,14 @@ export default function PositionWorkbenchPage() {
           </Space>
         }
         extra={
-          canManage && <Space wrap>
-            <PositionCollaborators key={id} positionId={id} />
-            <Upload accept=".pdf,.txt,.md,.markdown" multiple showUploadList={false} customRequest={handleUpload}>
+          canOperate && <Space wrap>
+            {canManage && <PositionCollaborators key={id} positionId={id} />}
+            <PositionActivity key={`activity-${id}`} positionId={id} />
+            {canManage && <Upload accept=".pdf,.txt,.md,.markdown" multiple showUploadList={false} customRequest={handleUpload}>
               <Button icon={<UploadOutlined />} loading={uploading}>
                 {uploading ? '解析中…' : '上传简历'}
               </Button>
-            </Upload>
+            </Upload>}
             <Button type="primary" icon={<ThunderboltOutlined />} loading={matching || taskLoading} disabled={!!taskError || !resumes.some(r => r.parseStatus === 'PARSED') || position?.status === 'CLOSED'} onClick={handleRunMatch}>
               {taskLoading ? '查询匹配状态…' : taskActive ? (matchTask.status === 'QUEUED' ? '等待匹配…' : '匹配中…') : matchTask?.status === 'FAILED' ? '重试人岗匹配' : '执行人岗匹配'}
             </Button>
@@ -525,7 +529,7 @@ export default function PositionWorkbenchPage() {
             <Progress percent={Math.min(99, Math.round(100 * matchTask.completedBatches / Math.max(1, matchTask.totalBatches)))} size="small" />
             {matches.length > 0 && <div>下方暂时保留上一轮匹配结果，任务成功后更新。</div>}
           </> : null}
-          action={taskActive ? <Popconfirm title="取消本轮匹配？" description="已发出的模型请求可能仍会计费；任务终止后不写入结果。" okText="取消本轮" cancelText="继续执行" onConfirm={handleCancelMatch}>
+          action={taskActive && matchTask.canCancel !== false ? <Popconfirm title="取消本轮匹配？" description="已发出的模型请求可能仍会计费；任务终止后不写入结果。" okText="取消本轮" cancelText="继续执行" onConfirm={handleCancelMatch}>
             <Button size="small">取消匹配</Button>
           </Popconfirm> : null} />}
         {position && (
@@ -550,7 +554,7 @@ export default function PositionWorkbenchPage() {
           extra={<Button icon={<ReloadOutlined />} onClick={loadMatches} loading={loadingMatches} size="small">刷新</Button>}
         >
           {matches.length === 0 && !loadingMatches ? (
-            <Empty description={!canManage ? '创建人尚未完成人岗匹配。' : resumes.some(r => r.parseStatus === 'PARSED') ? '简历已就绪。点击「执行人岗匹配」，查看技能命中、待核实项与评分依据。' : '请先上传简历；成功解析后，即可执行人岗匹配。'} />
+            <Empty description={!canOperate ? '创建人尚未完成人岗匹配。' : resumes.some(r => r.parseStatus === 'PARSED') ? '简历已就绪。点击「执行人岗匹配」，查看技能命中、待核实项与评分依据。' : canManage ? '请先上传简历；成功解析后，即可执行人岗匹配。' : '请联系创建人上传简历，或重新解析失败的简历。'} />
           ) : (
             <Table columns={matchColumns} dataSource={matches} rowKey="id"
               loading={loadingMatches} pagination={false} scroll={{ x: 1100 }} size="middle" />
@@ -562,9 +566,9 @@ export default function PositionWorkbenchPage() {
           title={`简历库（${resumes.length}）`}
           extra={<Button icon={<ReloadOutlined />} onClick={loadResumes} loading={loadingResumes} size="small">刷新</Button>}
         >
-          {canManage && <ResumeParseTaskPanel state={resumeParse} selectedIds={selectedResumes} onSubmitted={() => setSelectedResumes([])} closed={position?.status === 'CLOSED'} />}
+          {canOperate && <ResumeParseTaskPanel state={resumeParse} selectedIds={selectedResumes} onSubmitted={() => setSelectedResumes([])} closed={position?.status === 'CLOSED'} />}
           <Table columns={resumeColumns} dataSource={resumes} rowKey="id"
-            rowSelection={canManage ? { selectedRowKeys: selectedResumes, onChange: setSelectedResumes,
+            rowSelection={canOperate ? { selectedRowKeys: selectedResumes, onChange: setSelectedResumes,
               getCheckboxProps: r => ({ disabled: !r.retryable || resumeParse.busy || position?.status === 'CLOSED' }) } : undefined}
             loading={loadingResumes} pagination={false} scroll={{ x: 1000 }} size="middle" locale={{ emptyText: canManage ? '还没有候选人。点击上方「上传简历」，把人选整理到这个岗位。' : '创建人尚未上传候选人。' }} />
         </Card>
@@ -572,7 +576,7 @@ export default function PositionWorkbenchPage() {
 
       <QuestionsDrawer key={qDrawer.resumeId || "questions"}
         onDenied={denyAccess}
-        canManage={canManage}
+        canManage={canOperate}
         open={qDrawer.open}
         onClose={() => setQDrawer({ ...qDrawer, open: false })}
         resumeId={qDrawer.resumeId}
@@ -580,7 +584,7 @@ export default function PositionWorkbenchPage() {
       />
       <ReportDrawer key={rDrawer.resumeId || "report"}
         onDenied={denyAccess}
-        canManage={canManage}
+        canManage={canOperate}
         open={rDrawer.open}
         onClose={() => setRDrawer({ ...rDrawer, open: false })}
         resumeId={rDrawer.resumeId}

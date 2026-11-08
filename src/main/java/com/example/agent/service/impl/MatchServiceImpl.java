@@ -59,6 +59,7 @@ public class MatchServiceImpl implements MatchService {
     private final MatchInputReader inputReader;
     private final MatchTaskStore taskStore;
     private final com.example.agent.service.company.PositionAccess positionAccess;
+    private final com.example.agent.service.company.TaskAuthority authority;
 
     @Override
     public void runTask(MatchTaskStore.Task task) {
@@ -187,14 +188,18 @@ public class MatchServiceImpl implements MatchService {
     }
 
     @Override
+    @org.springframework.transaction.annotation.Transactional
     public void decide(Long matchId, boolean approved) {
         MatchResultEntity result = matchResultMapper.selectById(matchId);
         if (result == null) {
             throw new IllegalArgumentException("匹配结果不存在");
         }
-        requireOwnedPosition(result.getPositionId());
+        positionAccess.operator(result.getPositionId(),positionAccess.user(),true);
+        result=matchResultMapper.selectOne(new LambdaQueryWrapper<MatchResultEntity>().eq(MatchResultEntity::getId,matchId).last("FOR UPDATE"));
+        if((approved?"APPROVED":"REJECTED").equals(result.getHrDecision())) return;
         result.setHrDecision(approved ? "APPROVED" : "REJECTED");
         matchResultMapper.updateById(result);
+        authority.log(result.getPositionId(),positionAccess.user(),approved?"CANDIDATE_APPROVED":"CANDIDATE_REJECTED",matchId.toString());
     }
 
     // ==================== 规则评分 ====================
@@ -328,6 +333,7 @@ public class MatchServiceImpl implements MatchService {
             return results;
         }
         for (int from = 0; from < resumes.size(); from += LLM_BATCH_SIZE) {
+            if(taskId!=null) authority.before("MATCH",taskId,position.getId(),position.getUserId());
             if (taskId != null) taskStore.progress(taskId, "SEMANTIC_SCORING", from / LLM_BATCH_SIZE);
             List<CandidateResumeEntity> batch = resumes.subList(from, Math.min(from + LLM_BATCH_SIZE, resumes.size()));
             try {

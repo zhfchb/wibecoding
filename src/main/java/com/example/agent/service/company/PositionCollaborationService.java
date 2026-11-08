@@ -14,17 +14,22 @@ public class PositionCollaborationService {
     private final PositionAccess access;
     private final CompanyService companies;
     private final JdbcTemplate db;
-    public record Viewer(Long userId,String username) {}
+    public record Viewer(Long userId,String username,String permission) {}
 
     public List<Viewer> list(Long positionId) {
         access.owned(positionId);
         return db.query("""
-          SELECT v.user_id,u.username FROM recruitment_position_viewer v
+          SELECT v.user_id,u.username,v.permission FROM recruitment_position_viewer v
           JOIN sys_user u ON u.id=v.user_id WHERE v.position_id=? ORDER BY u.username,v.user_id
-          """,(r,n)->new Viewer(r.getLong("user_id"),r.getString("username")),positionId);
+          """,(r,n)->new Viewer(r.getLong("user_id"),r.getString("username"),r.getString("permission")),positionId);
     }
     @Transactional
     public void grant(Long positionId,Long userId) {
+        grant(positionId,userId,"VIEWER");
+    }
+    @Transactional
+    public void grant(Long positionId,Long userId,String permission) {
+        if(!List.of("VIEWER","EDITOR").contains(permission==null?"":permission)) throw new IllegalArgumentException("请选择只读或招聘协作权限");
         // Locking the position serializes grants/revocations/deletion. No bulk legacy backfill.
         db.queryForList("SELECT id FROM job_position WHERE id=? FOR UPDATE",Long.class,positionId);
         var position=access.owned(positionId);
@@ -44,7 +49,9 @@ public class PositionCollaborationService {
             db.update("UPDATE job_position SET company_id=? WHERE id=?",company.id(),positionId);
         }
         if(db.queryForObject("SELECT COUNT(*) FROM recruitment_position_viewer WHERE position_id=? AND user_id=?",Long.class,positionId,userId)==0)
-            db.update("INSERT INTO recruitment_position_viewer(position_id,user_id,granted_by,created_at) VALUES (?,?,?,?)",positionId,userId,access.user(),LocalDateTime.now());
+            db.update("INSERT INTO recruitment_position_viewer(position_id,user_id,granted_by,permission,revision,created_at) VALUES (?,?,?,?,?,?)",positionId,userId,access.user(),permission,java.util.UUID.randomUUID().toString(),LocalDateTime.now());
+        else db.update("UPDATE recruitment_position_viewer SET permission=?,revision=? WHERE position_id=? AND user_id=? AND permission<>?",
+                permission,java.util.UUID.randomUUID().toString(),positionId,userId,permission);
     }
     @Transactional
     public void revoke(Long positionId,Long userId) {

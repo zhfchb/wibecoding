@@ -23,7 +23,7 @@ def api(route):
             if state['load_error']:
                 route.fulfill(status=503, json={'message': 'fixture load error'}); return
         elif method == 'PUT':
-            assert route.request.post_data_json == {'userId': 2}
+            assert route.request.post_data_json == {'userId': 2, 'permission': 'VIEWER'}
             state['grants'] = [{'userId': 2, 'username': 'HR只读成员'}]
         elif method == 'DELETE':
             assert path.endswith('/2'); state['grants'] = []
@@ -68,9 +68,9 @@ with sync_playwright() as p:
     expect(page.get_by_text('尚未授权其他成员', exact=True)).to_be_visible()
     page.get_by_role('combobox', name='只读协作成员').click()
     page.locator('.ant-select-dropdown:visible .ant-select-item-option-content').filter(has_text='HR只读成员').click()
-    page.get_by_role('button', name='添加只读成员', exact=True).click()
+    page.get_by_role('button', name='添加协作成员', exact=True).click()
     expect(page.get_by_role('cell', name='HR只读成员', exact=True)).to_be_visible()
-    expect(page.get_by_role('button', name='添加只读成员', exact=True)).to_be_disabled()
+    expect(page.get_by_role('button', name='添加协作成员', exact=True)).to_be_disabled()
     page.get_by_role('button', name=re.compile('^撤\s*销$')).click()
     page.get_by_role('button', name='撤销授权', exact=True).click()
     expect(page.get_by_text('尚未授权其他成员', exact=True)).to_be_visible()

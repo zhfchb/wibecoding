@@ -315,7 +315,30 @@ CREATE TABLE IF NOT EXISTS recruitment_position_viewer (
     position_id BIGINT NOT NULL,
     user_id BIGINT NOT NULL,
     granted_by BIGINT NOT NULL,
+    permission VARCHAR(20) NOT NULL DEFAULT 'VIEWER',
+    revision VARCHAR(36),
     created_at TIMESTAMP(6) NOT NULL,
     PRIMARY KEY (position_id,user_id),
     INDEX idx_position_viewer_user (user_id,position_id)
+);
+
+CREATE TABLE IF NOT EXISTS recruitment_task_actor (
+    kind VARCHAR(20) NOT NULL,
+    task_id VARCHAR(36) NOT NULL,
+    position_id BIGINT NOT NULL,
+    owner_id BIGINT NOT NULL,
+    actor_id BIGINT NOT NULL,
+    grant_revision VARCHAR(36),
+    created_at TIMESTAMP(6) NOT NULL,
+    PRIMARY KEY(kind,task_id),
+    INDEX idx_task_actor_position (position_id)
+);
+CREATE TABLE IF NOT EXISTS recruitment_position_activity (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    position_id BIGINT NOT NULL,
+    actor_id BIGINT NOT NULL,
+    action VARCHAR(40) NOT NULL,
+    resource_id VARCHAR(64) NOT NULL,
+    created_at TIMESTAMP(6) NOT NULL,
+    INDEX idx_position_activity (position_id,id)
 );

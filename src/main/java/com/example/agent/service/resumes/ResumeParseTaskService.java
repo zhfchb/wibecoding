@@ -33,10 +33,14 @@ public class ResumeParseTaskService {
     private final ResumeProfileReader profiles;
     private final TransactionTemplate tx;
     private final int timeout;
+    private final com.example.agent.service.company.PositionAccess access;
+    private final com.example.agent.service.company.TaskAuthority authority;
 
     public ResumeParseTaskService(ResumeParseTaskStore store, JobPositionMapper positions,
                                   CandidateResumeMapper resumes, ResumeParser parser, ResumeProfileReader profiles,
-                                  TransactionTemplate tx, @Value("${resume.parse-tasks.timeout-seconds:600}") int timeout) {
+                                  TransactionTemplate tx, @Value("${resume.parse-tasks.timeout-seconds:600}") int timeout,
+                                  com.example.agent.service.company.PositionAccess access,com.example.agent.service.company.TaskAuthority authority) {
+        this.access=access;this.authority=authority;
         this.store=store;this.positions=positions;this.resumes=resumes;this.parser=parser;
         this.profiles=profiles;this.tx=tx;this.timeout=Math.max(1,timeout);
     }
@@ -46,42 +50,46 @@ public class ResumeParseTaskService {
                 || ids.stream().anyMatch(i -> i==null || i<=0) || ids.stream().distinct().count()!=ids.size()) {
             throw new IllegalArgumentException("请求标识无效，或未选择 1～20 份不同的失败简历");
         }
-        Long owner=owner();
         String hash=hash(ids.stream().sorted().toList().toString());
         return tx.execute(status -> {
+            Long owner=access.operator(positionId,access.user(),true).getUserId();
             requirePosition(positionId,owner,true);
             expirePosition(positionId);
             var prior=store.byKey(positionId,key);
             if (prior!=null) {
                 if (!hash.equals(prior.inputHash())) throw failure("REQUEST_CONFLICT","同一请求标识不能用于不同简历，请刷新后重试");
-                return store.view(prior);
+                return view(prior);
             }
             if (store.active(positionId)!=null) throw failure("TASK_ACTIVE","该岗位已有重新解析任务，请查看进度");
             var selected=ids.stream().sorted().map(id -> eligible(id,positionId,owner)).toList();
             String id=UUID.randomUUID().toString();
             store.create(id,positionId,owner,key,hash,LocalDateTime.now().plusSeconds(timeout));
+            authority.register("PARSE",id,positionId,owner);
             for (int i=0;i<selected.size();i++) {
                 var resume=selected.get(i);
                 store.addItem(id,resume.getId(),i,hash(resume.getRawText()));
             }
-            return store.view(store.get(id));
+            return view(store.get(id));
         });
     }
 
     public ResumeParseTaskResponse latest(Long positionId) {
-        requirePosition(positionId,owner(),false);
+        access.operator(positionId,access.user(),false);
         expire();
-        var task=store.latest(positionId);return task==null ? null : store.view(task);
+        var task=store.latest(positionId);return task==null ? null : view(task);
     }
     public ResumeParseTaskResponse get(String id) {
-        owned(id);expire();return store.view(store.get(id));
+        owned(id);expire();return view(store.get(id));
     }
     public ResumeParseTaskResponse cancel(String id) {
         var task=owned(id);
         return tx.execute(status -> {
+            authority.cancelAllowed("PARSE",id,task.positionId(),task.ownerId());
             store.lock(id);
-            store.terminate(id,"CANCELLED",null,"任务已取消，已完成的解析结果保留");
-            return store.view(store.get(task.id()));
+            if(active(store.get(id))) {
+                store.terminate(id,"CANCELLED",null,"任务已取消，已完成的解析结果保留");authority.log(task.positionId(),access.user(),"PARSE_CANCELLED",id);
+            }
+            return view(store.get(task.id()));
         });
     }
 
@@ -93,6 +101,7 @@ public class ResumeParseTaskService {
             try {
                 var text=tx.execute(status -> {
                     requirePosition(task.positionId(),task.ownerId(),true);
+                    authority.before("PARSE",id,task.positionId(),task.ownerId());
                     running(store.lock(id));
                     var resume=eligible(item.resumeId(),task.positionId(),task.ownerId());
                     if (!hash(resume.getRawText()).equals(item.inputHash())) throw failure("INPUT_CHANGED","简历原文已变化，请重新提交");
@@ -106,6 +115,7 @@ public class ResumeParseTaskService {
                 catch (Exception e) { throw failure("PARSER_UNAVAILABLE","解析服务暂不可用，请检查服务后重新解析"); }
                 tx.executeWithoutResult(status -> {
                     requirePosition(task.positionId(),task.ownerId(),true);
+                    authority.before("PARSE",id,task.positionId(),task.ownerId());
                     running(store.lock(id));
                     var resume=eligible(item.resumeId(),task.positionId(),task.ownerId());
                     if (!hash(resume.getRawText()).equals(item.inputHash())) throw failure("INPUT_CHANGED","简历原文已变化，未覆盖现有结果");
@@ -123,14 +133,16 @@ public class ResumeParseTaskService {
                     store.itemStatus(id,item.resumeId(),"SUCCEEDED",null,null);
                 });
             } catch (Exception e) {
-                String code=e instanceof ResumeParseFailure f ? f.code() : "EXECUTION_FAILED";
-                String message=e instanceof ResumeParseFailure ? e.getMessage() : "重新解析执行失败，原结果保留，请检查服务后重试";
+                String code=e instanceof com.example.agent.service.company.TaskAuthority.Revoked ? "AUTH_REVOKED" : e instanceof ResumeParseFailure f ? f.code() : "EXECUTION_FAILED";
+                String message=e instanceof com.example.agent.service.company.TaskAuthority.Revoked || e instanceof ResumeParseFailure ? e.getMessage() : "重新解析执行失败，原结果保留，请检查服务后重试";
                 log.warn("Resume retry failed: taskId={} resumeId={} type={}",id,item.resumeId(),e.getClass().getSimpleName());
                 tx.executeWithoutResult(status -> {
                     var current=store.lock(id);
                     if (!active(current)) return;
                     if (!current.deadline().isAfter(LocalDateTime.now())) {
                         store.terminate(id,"FAILED","TIMEOUT","任务超时或进程中断，已完成结果保留，请确认后重试");
+                    } else if ("AUTH_REVOKED".equals(code)) {
+                        store.terminate(id,"FAILED",code,message);
                     } else if (Thread.currentThread().isInterrupted()) {
                         store.terminate(id,"FAILED","INTERRUPTED","执行已中断，已完成结果保留，请确认后重试");
                     } else {
@@ -178,12 +190,16 @@ public class ResumeParseTaskService {
     }
     private ResumeParseTaskStore.Task owned(String id) {
         var task=store.get(id);
-        if (task==null || !owner().equals(task.ownerId())) throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        if (task==null) throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        access.operator(task.positionId(),access.user(),false);
         requirePosition(task.positionId(),task.ownerId(),false);return task;
     }
     private Long owner() {
         var owner=SecurityUtils.getCurrentUserId();
         if (owner==null) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);return owner;
+    }
+    private ResumeParseTaskResponse view(ResumeParseTaskStore.Task task) {
+        return store.view(task).authority(authority.actorId("PARSE",task.id(),task.ownerId()),authority.canCancel("PARSE",task.id(),task.ownerId()));
     }
     private boolean active(ResumeParseTaskStore.Task task) { return task!=null && List.of("QUEUED","RUNNING").contains(task.status()); }
     private void running(ResumeParseTaskStore.Task task) {

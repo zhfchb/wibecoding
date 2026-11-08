@@ -32,11 +32,15 @@ public class MaterialTaskService {
     private final CandidateReportMapper reportMapper;
     private final TransactionTemplate tx;
     private final int timeout;
+    private final com.example.agent.service.company.PositionAccess access;
+    private final com.example.agent.service.company.TaskAuthority authority;
 
     public MaterialTaskService(MaterialTaskStore store,MaterialInputReader inputs,MaterialOutputValidator validator,
             InterviewService interviews,ReportService reports,InterviewQuestionMapper questions,
             CandidateReportMapper reportMapper,TransactionTemplate tx,
-            @Value("${material.tasks.timeout-seconds:600}") int timeout) {
+            @Value("${material.tasks.timeout-seconds:600}") int timeout,
+            com.example.agent.service.company.PositionAccess access,com.example.agent.service.company.TaskAuthority authority) {
+        this.access=access;this.authority=authority;
         this.store=store; this.inputs=inputs; this.validator=validator; this.interviews=interviews; this.reports=reports;
         this.questions=questions; this.reportMapper=reportMapper; this.tx=tx; this.timeout=Math.max(1,timeout);
     }
@@ -45,8 +49,10 @@ public class MaterialTaskService {
         return view(create(resumeId,kind,key,false));
     }
     private MaterialTaskStore.Task create(Long resumeId,String kind,String key,boolean synchronous) {
-        Long owner=owner();
         return tx.execute(status -> {
+            var resume=access.resume(resumeId);
+            var position=access.operator(resume.getPositionId(),access.user(),true);
+            Long owner=position.getUserId();
             inputs.load(resumeId,owner,kind,false,true);
             store.expire();
             var prior=store.byKey(resumeId,kind,key);
@@ -59,6 +65,7 @@ public class MaterialTaskService {
             var input=inputs.load(resumeId,owner,kind,true,true);
             String id=UUID.randomUUID().toString();
             store.create(id,resumeId,owner,kind,key,input.hash(),input.match()==null ? null : input.match().getMatchScore(),LocalDateTime.now().plusSeconds(timeout));
+            authority.register("MATERIAL",id,position.getId(),owner);
             if (synchronous && !store.claim(id)) throw new IllegalStateException("Cannot start material task");
             return store.get(id);
         });
@@ -72,30 +79,40 @@ public class MaterialTaskService {
                 result.errorMessage()==null ? "生成任务已终止，原内容保留" : result.errorMessage());
     }
     public MaterialTaskResponse latest(Long resumeId,String kind) {
-        inputs.load(resumeId,owner(),kind,false,false); store.expire();
+        var position=access.operator(access.resume(resumeId).getPositionId(),access.user(),false);
+        inputs.load(resumeId,position.getUserId(),kind,false,false); store.expire();
         var task=store.latest(resumeId,kind); return task==null ? null : view(task);
     }
     public MaterialTaskResponse get(String id) {
         owned(id); store.expire(); return view(store.get(id));
     }
     public MaterialTaskResponse cancel(String id) {
-        owned(id); store.terminate(id,"CANCELLED",null,"任务已取消，原内容保留"); return get(id);
+        return tx.execute(status -> {
+            var task=owned(id);Long positionId=access.resume(task.resumeId()).getPositionId();
+            authority.cancelAllowed("MATERIAL",id,positionId,task.ownerId());
+            if(List.of("QUEUED","RUNNING").contains(store.lock(id).status())) {
+                store.terminate(id,"CANCELLED",null,"任务已取消，原内容保留");authority.log(positionId,access.user(),"MATERIAL_CANCELLED",id);
+            }
+            return get(id);
+        });
     }
     private MaterialTaskStore.Task owned(String id) {
         var task=store.get(id);
-        if (task==null || !owner().equals(task.ownerId())) throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        if (task==null) throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        access.operator(access.resume(task.resumeId()).getPositionId(),access.user(),false);
         inputs.load(task.resumeId(),task.ownerId(),task.kind(),false,false); return task;
     }
     private MaterialTaskResponse view(MaterialTaskStore.Task task) {
         boolean stale="SUCCEEDED".equals(task.status()) && !inputs.load(task.resumeId(),task.ownerId(),task.kind(),false,false).hash().equals(task.hash());
         return new MaterialTaskResponse(task.id(),task.resumeId(),task.kind(),task.key(),task.status(),task.phase(),
-                task.errorCode(),task.errorMessage(),task.deadline(),stale);
+                task.errorCode(),task.errorMessage(),task.deadline(),stale).authority(authority.actorId("MATERIAL",task.id(),task.ownerId()),authority.canCancel("MATERIAL",task.id(),task.ownerId()));
     }
     public void execute(String id,boolean claim) {
         if (claim && !store.claim(id)) return;
         try {
             var task=store.get(id); store.running(task);
             var input=inputs.load(task.resumeId(),task.ownerId(),task.kind(),true,false);
+            authority.before("MATERIAL",id,input.position().getId(),task.ownerId());
             if (!input.hash().equals(task.hash())) throw changed();
             List<InterviewQuestionEntity> generatedQuestions;
             CandidateReportEntity generatedReport;
@@ -105,13 +122,14 @@ public class MaterialTaskService {
                 validator.questions(generatedQuestions); generatedReport=null;
             } else {
                 store.progress(id,"SEARCHING");
-                generatedReport=reports.prepare(input.position(),input.resume(),input.match(),() -> store.progress(id,"GENERATING"));
+                generatedReport=reports.prepare(input.position(),input.resume(),input.match(),() -> { authority.before("MATERIAL",id,input.position().getId(),task.ownerId());store.progress(id,"GENERATING"); });
                 validator.report(generatedReport); generatedQuestions=null;
             }
             store.progress(id,"SAVING");
             tx.executeWithoutResult(status -> {
                 // Consistent lock order: position/resume/match, then task. No external calls here.
                 var currentInput=inputs.load(task.resumeId(),task.ownerId(),task.kind(),true,true);
+                authority.before("MATERIAL",id,currentInput.position().getId(),task.ownerId());
                 store.running(store.lock(id));
                 if (!currentInput.hash().equals(task.hash())) throw changed();
                 Long resultId=null;
@@ -129,6 +147,8 @@ public class MaterialTaskService {
                 }
                 store.complete(id,resultId);
             });
+        } catch (com.example.agent.service.company.TaskAuthority.Revoked e) {
+            store.terminate(id,"FAILED","AUTH_REVOKED",e.getMessage());
         } catch (MaterialFailure e) {
             store.expire(); store.terminate(id,"FAILED",e.code(),e.getMessage());
         } catch (Exception e) {

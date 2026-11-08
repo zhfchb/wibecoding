@@ -32,7 +32,7 @@ export default function ResumeParseTaskPanel({ state, selectedIds, onSubmitted, 
           </Space>
         </List.Item>} />
       </>}
-      action={state.active ? <Popconfirm title="取消未完成的解析？" description="已完成的结果保留；已发送的模型请求可能仍会计费。"
+      action={state.active && task.canCancel !== false ? <Popconfirm title="取消未完成的解析？" description="已完成的结果保留；已发送的模型请求可能仍会计费。"
         okText="取消解析" cancelText="继续执行" onConfirm={state.cancel}>
         <Button size="small">取消重新解析</Button>
       </Popconfirm> : null} />}

@@ -1,0 +1,25 @@
+import { useState } from 'react'
+import { Alert, Button, Modal, Table } from 'antd'
+import api from '../api'
+
+const labels = { MATCH_SUBMITTED: '发起人岗匹配', PARSE_SUBMITTED: '发起简历重解析', MATERIAL_SUBMITTED: '发起面试资料生成', MATCH_CANCELLED: '取消人岗匹配', PARSE_CANCELLED: '取消简历重解析', MATERIAL_CANCELLED: '取消面试资料生成', CANDIDATE_APPROVED: '通过候选人', CANDIDATE_REJECTED: '淘汰候选人' }
+export default function PositionActivity({ positionId }) {
+  const [open, setOpen] = useState(false)
+  const [rows, setRows] = useState([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(false)
+  const load = async () => {
+    setLoading(true); setError(false)
+    try { setRows((await api.get(`/recruitment/positions/${positionId}/activity`)).data) }
+    catch { setRows([]); setError(true) }
+    finally { setLoading(false) }
+  }
+  return <><Button onClick={() => { setOpen(true); load() }}>操作记录</Button>
+    <Modal title="最近100条招聘操作" open={open} onCancel={() => setOpen(false)} footer={<Button onClick={load} loading={loading}>刷新记录</Button>} width={640}>
+      {error ? <Alert type="warning" message="无法读取操作记录，请重试或确认协作权限" /> : <Table loading={loading} size="small" rowKey="id" dataSource={rows} pagination={{ pageSize: 10 }} scroll={{ x: 460 }} columns={[
+        { title: '操作人', dataIndex: 'username', render: v => v || '历史账号' },
+        { title: '操作', dataIndex: 'action', render: v => labels[v] || v },
+        { title: '时间', dataIndex: 'createdAt', render: v => v?.replace('T', ' ') },
+      ]} />}
+    </Modal></>
+}

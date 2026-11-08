@@ -185,6 +185,11 @@ button:focus-visible, a:focus-visible { outline: 3px solid #9fbeab; outline-offs
 .workbench-guide { grid-template-columns: repeat(3, 1fr); background: #edf2e8; padding: 22px; border-radius: 8px; }
 .step-done { background: #dce8d6; border-color: #dce8d6; color: #315e3e; }
 .positions-panel .ant-card-head { min-height: 70px; }
+@media (max-width: 600px) {
+  .recruitment-workbench .ant-alert { flex-wrap: wrap; }
+  .recruitment-workbench .ant-alert-content { min-width: 0; }
+  .recruitment-workbench .ant-alert-action { width: 100%; margin: 10px 0 0; text-align: right; }
+}
 .positions-panel .ant-card-body { padding: 0; }
 .count-badge { display: inline-block; background: #f0f3eb; color: #74816e; border-radius: 5px; padding: 2px 7px; font-size: 10px; margin-left: 8px; font-family: sans-serif; font-weight: 400; }
 .position-empty { display: flex; align-items: center; flex-direction: column; padding: 42px 22px 44px; text-align: center; }

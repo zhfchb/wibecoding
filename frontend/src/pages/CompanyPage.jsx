@@ -43,7 +43,7 @@ export default function CompanyPage({ members = false }) {
   return <Card title={members ? '成员管理' : '公司资料'} loading={loading}
     extra={<Space><Button onClick={load}>刷新</Button>{members && admin && <Button type="primary" onClick={() => setOpen(true)}>新增HR成员</Button>}</Space>}>
     {error ? <Alert type="error" message="无法加载公司资料，请重试" action={<Button onClick={load}>重试</Button>} /> : company && <>
-        <Alert type="info" style={{ marginBottom: 20 }} message="公司目录由本公司成员共享；招聘资料默认仅创建人可见，可在岗位详情向指定成员授予只读权限。私人知识库和聊天不共享。" />
+        <Alert type="info" style={{ marginBottom: 20 }} message="公司目录由本公司成员共享；招聘资料默认仅创建人可见，可在岗位详情授予指定成员只读或招聘协作权限。私人知识库和聊天不共享。" />
       {members ? <Table rowKey="userId" dataSource={rows} pagination={false} columns={[
         { title: '账号', dataIndex: 'username' }, { title: '公司角色', dataIndex: 'role', render: role => <Tag>{role === 'ADMIN' ? '公司管理员' : 'HR'}</Tag> },
       ]} /> : <Form form={form} layout="vertical" onFinish={save} disabled={!admin} onValuesChange={changed => {

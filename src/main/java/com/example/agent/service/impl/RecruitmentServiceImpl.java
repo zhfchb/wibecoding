@@ -402,7 +402,7 @@ public class RecruitmentServiceImpl implements RecruitmentService {
         return PositionResponse.from(entity,
                 readSkills(entity.getRequiredSkills()),
                 readSkills(entity.getPreferredSkills()),
-                resumeCount, positionDepartments.view(entity), positionAccess.manages(entity));
+                resumeCount, positionDepartments.view(entity), positionAccess.manages(entity), positionAccess.operates(entity));
     }
 
     private List<String> readSkills(String json) {

@@ -26,11 +26,11 @@ public record PositionResponse(
         Long companyId,
         Long departmentId,
         String departmentStatus,
-        boolean canManage) {
+        boolean canManage,boolean canOperate) {
 
     public static PositionResponse from(JobPositionEntity entity, List<String> required,
                                         List<String> preferred, Integer resumeCount,
-                                        com.example.agent.service.company.PositionDepartmentService.View department, boolean canManage) {
+                                        com.example.agent.service.company.PositionDepartmentService.View department, boolean canManage,boolean canOperate) {
         return new PositionResponse(
                 entity.getId(),
                 entity.getTitle(),
@@ -44,6 +44,6 @@ public record PositionResponse(
                 entity.getEducation(),
                 entity.getDescription(),
                 entity.getStatus(),
-                resumeCount, entity.getCompanyId(), entity.getDepartmentId(), department.status(), canManage);
+                resumeCount, entity.getCompanyId(), entity.getDepartmentId(), department.status(), canManage,canOperate);
     }
 }

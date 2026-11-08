@@ -270,7 +270,7 @@ export default function RecruitmentPage() {
           <Button type="link" size="small" onClick={() => navigate(`/recruitment/positions/${record.id}`)}>
             查看候选人
           </Button>
-          {!record.canManage && <Tag>只读协作</Tag>}
+          {!record.canManage && <Tag>{record.canOperate ? '招聘协作' : '只读协作'}</Tag>}
           {record.canManage && record.status === 'OPEN' && (
             <Popconfirm title="关闭此岗位？" description="关闭后不再参与匹配，数据保留" onConfirm={() => handleClose(record.id)}>
               <Button type="link" size="small">关闭</Button>

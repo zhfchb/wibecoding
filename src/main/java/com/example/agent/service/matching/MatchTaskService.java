@@ -25,10 +25,14 @@ public class MatchTaskService {
     private final MatchService engine;
     private final TransactionTemplate tx;
     private final int timeoutSeconds;
+    private final com.example.agent.service.company.PositionAccess access;
+    private final com.example.agent.service.company.TaskAuthority authority;
 
     public MatchTaskService(JobPositionMapper positions, MatchInputReader inputs, MatchTaskStore store,
                             MatchService engine, TransactionTemplate tx,
-                            @Value("${match.tasks.timeout-seconds:600}") int timeoutSeconds) {
+                            @Value("${match.tasks.timeout-seconds:600}") int timeoutSeconds,
+                            com.example.agent.service.company.PositionAccess access,com.example.agent.service.company.TaskAuthority authority) {
+        this.access=access;this.authority=authority;
         this.positions = positions; this.inputs = inputs; this.store = store;
         this.engine = engine; this.tx = tx; this.timeoutSeconds = Math.max(1, timeoutSeconds);
     }
@@ -37,14 +41,13 @@ public class MatchTaskService {
         if (key == null || !key.matches("[A-Za-z0-9_-]{8,80}")) {
             throw new IllegalArgumentException("请提供 8～80 位字母、数字、下划线或连字符组成的请求标识");
         }
-        return create(positionId, key, false).view();
+        return view(create(positionId, key, false));
     }
 
     private MatchTaskStore.Task create(Long positionId, String key, boolean synchronous) {
-        Long owner = owner();
         return tx.execute(status -> {
-            var position = positions.lockById(positionId);
-            if (position == null || !owner.equals(position.getUserId())) throw notFound();
+            var position = access.operator(positionId,access.user(),true);
+            Long owner=position.getUserId();
             store.expire();
             var prior = store.byKey(positionId, key);
             if (prior != null) return prior;
@@ -58,6 +61,7 @@ public class MatchTaskService {
             var now = LocalDateTime.now();
             String id = UUID.randomUUID().toString();
             store.insert(id, positionId, owner, key, input.hash(), input.resumes().size(), now, now.plusSeconds(timeoutSeconds));
+            authority.register("MATCH",id,positionId,owner);
             store.rememberKey(positionId, key, id);
             if (synchronous && !store.claim(id)) throw new IllegalStateException("Cannot start match task");
             return store.get(id);
@@ -68,19 +72,24 @@ public class MatchTaskService {
         requirePosition(positionId);
         store.expire();
         var task = store.latest(positionId);
-        return task == null ? null : task.view();
+        return task == null ? null : view(task);
     }
 
     public MatchTaskResponse get(String id) {
         var task = owned(id);
         store.expire();
-        return store.get(task.view().id()).view();
+        return view(store.get(task.view().id()));
     }
 
     public MatchTaskResponse cancel(String id) {
-        owned(id);
-        store.cancel(id);
-        return get(id);
+        return tx.execute(status -> {
+            var task=owned(id);
+            authority.cancelAllowed("MATCH",id,task.view().positionId(),task.ownerId());
+            if(List.of("QUEUED","RUNNING").contains(store.lock(id).view().status())) {
+                store.cancel(id);authority.log(task.view().positionId(),access.user(),"MATCH_CANCELLED",id);
+            }
+            return get(id);
+        });
     }
 
     public List<MatchResultResponse> runSync(Long positionId) {
@@ -100,7 +109,10 @@ public class MatchTaskService {
         var task = store.get(id);
         try {
             store.ensureRunning(id);
+            authority.before("MATCH",id,task.view().positionId(),task.ownerId());
             engine.runTask(task);
+        } catch (com.example.agent.service.company.TaskAuthority.Revoked e) {
+            store.fail(id,"AUTH_REVOKED",e.getMessage());
         } catch (MatchTaskFailure e) {
             store.expire();
             store.fail(id, e.code(), e.getMessage());
@@ -112,14 +124,17 @@ public class MatchTaskService {
 
     private MatchTaskStore.Task owned(String id) {
         var task = store.get(id);
-        if (task == null || !owner().equals(task.ownerId())) throw notFound();
+        if (task == null) throw notFound();
         requirePosition(task.view().positionId());
         return task;
     }
 
     private void requirePosition(Long id) {
-        var position = positions.selectById(id);
-        if (position == null || !owner().equals(position.getUserId())) throw notFound();
+        access.operator(id,access.user(),false);
+    }
+
+    private MatchTaskResponse view(MatchTaskStore.Task task) {
+        return task.view().authority(authority.actorId("MATCH",task.view().id(),task.ownerId()),authority.canCancel("MATCH",task.view().id(),task.ownerId()));
     }
 
     private Long owner() {

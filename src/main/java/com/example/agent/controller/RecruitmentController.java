@@ -49,6 +49,10 @@ public class RecruitmentController {
     private final ResumeParseTaskService resumeParseTasks;
     private final com.example.agent.service.materials.MaterialTaskService materialTasks;
     private final com.example.agent.service.company.PositionDepartmentService positionDepartments;
+    private final com.example.agent.service.company.TaskAuthority taskAuthority;
+
+    @GetMapping("/positions/{id}/activity")
+    public List<com.example.agent.service.company.TaskAuthority.Activity> activity(@PathVariable Long id) { return taskAuthority.activity(id); }
 
     public record DepartmentBinding(Long departmentId) {}
 

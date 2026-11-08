@@ -24,7 +24,7 @@ public class PositionAccess {
         EXISTS (SELECT 1 FROM recruitment_position_viewer v
           JOIN recruitment_company_member reader_member ON reader_member.user_id=v.user_id AND reader_member.company_id=p.company_id
           JOIN recruitment_company_member creator_member ON creator_member.user_id=p.user_id AND creator_member.company_id=p.company_id
-          WHERE v.position_id=p.id AND v.user_id=?)
+          WHERE v.position_id=p.id AND v.user_id=? AND v.granted_by=p.user_id AND v.permission IN ('VIEWER','EDITOR'))
         """;
 
     public Long user() {
@@ -43,6 +43,26 @@ public class PositionAccess {
     public JobPositionEntity lockOwned(Long id) {
         user();var position=positions.lockById(id);
         if(!manages(position)) throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        return position;
+    }
+    public boolean operates(JobPositionEntity position) {
+        return "OWNER".equals(permission(position,user())) || "EDITOR".equals(permission(position,user()));
+    }
+    public String permission(JobPositionEntity position,Long actor) {
+        if(position==null || actor==null) return null;
+        if(Objects.equals(position.getUserId(),actor)) return "OWNER";
+        var roles=db.queryForList("""
+            SELECT v.permission FROM recruitment_position_viewer v
+            JOIN recruitment_company_member a ON a.user_id=v.user_id AND a.company_id=?
+            JOIN recruitment_company_member c ON c.user_id=? AND c.company_id=a.company_id
+            WHERE v.position_id=? AND v.user_id=? AND v.granted_by=?
+            """,String.class,position.getCompanyId(),position.getUserId(),position.getId(),actor,position.getUserId());
+        return roles.isEmpty()?null:roles.get(0);
+    }
+    public JobPositionEntity operator(Long id,Long actor,boolean lock) {
+        var position=lock?positions.lockById(id):positions.selectById(id);
+        String permission=permission(position,actor);
+        if(!"OWNER".equals(permission) && !"EDITOR".equals(permission)) throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         return position;
     }
     public List<Long> visibleIds() {
