@@ -96,6 +96,8 @@ CREATE TABLE IF NOT EXISTS job_position (
     user_id          BIGINT       NOT NULL,
     title            VARCHAR(200) NOT NULL,
     department       VARCHAR(100),
+    company_id       BIGINT,
+    department_id    BIGINT,
     city             VARCHAR(50),
     salary_min       INT,
     salary_max       INT,

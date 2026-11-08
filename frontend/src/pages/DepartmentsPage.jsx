@@ -53,7 +53,7 @@ export default function DepartmentsPage() {
     `${row.name} ${row.description || ''}`.toLowerCase().includes(query.trim().toLowerCase()))
   return <Card title="部门管理" extra={<Space wrap><Button onClick={load} loading={loading}>刷新部门</Button>
     {admin && <Button type="primary" disabled={error || loading} onClick={() => edit(null)}>新增部门</Button>}</Space>}>
-    <Typography.Paragraph type="secondary">维护公司的部门目录。停用后保留记录，可重新启用；岗位与正式部门的关联将在下一阶段接入。</Typography.Paragraph>
+    <Typography.Paragraph type="secondary">维护公司的部门目录。停用后保留记录，可重新启用；已关联岗位仍可查看，创建或更换岗位部门时仅可选择已启用部门。</Typography.Paragraph>
     {company && !admin && <Alert style={{ marginBottom: 16 }} type="info" showIcon message="你可以查看本公司部门，新增、编辑及启停由公司管理员操作。" />}
     {error ? <Alert type="error" showIcon message="部门加载失败，已有数据未清除，请重试" action={<Button onClick={load}>重试加载</Button>} /> : <>
       <Space wrap style={{ marginBottom: 16 }}>

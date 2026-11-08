@@ -12,6 +12,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { recruitmentApi } from '../api'
 import PageIntro from '../components/PageIntro'
+import PositionDepartmentEditor from '../components/PositionDepartmentEditor'
 import ResumeParseTaskPanel from '../components/ResumeParseTaskPanel'
 import useResumeParseTask from '../hooks/useResumeParseTask'
 import useMaterialTask from '../hooks/useMaterialTask'
@@ -501,7 +502,7 @@ export default function PositionWorkbenchPage() {
           </Popconfirm> : null} />}
         {position && (
           <Descriptions bordered size="small" column={{ xs: 1, sm: 2, lg: 4 }} style={{ marginBottom: 16 }}>
-            <Descriptions.Item label="部门">{position.department || '-'}</Descriptions.Item>
+            <Descriptions.Item label="部门"><PositionDepartmentEditor position={position} onUpdated={setPosition} /></Descriptions.Item>
             <Descriptions.Item label="城市">{position.city || '-'}</Descriptions.Item>
             <Descriptions.Item label="薪资">{position.salaryMin ?? '-'}~{position.salaryMax ?? '-'}k</Descriptions.Item>
             <Descriptions.Item label="最低年限">{position.minYears ?? '-'} 年 / {position.education || '学历不限'}</Descriptions.Item>

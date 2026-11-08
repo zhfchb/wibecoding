@@ -22,14 +22,18 @@ public record PositionResponse(
         String education,
         String description,
         String status,
-        Integer resumeCount) {
+        Integer resumeCount,
+        Long companyId,
+        Long departmentId,
+        String departmentStatus) {
 
     public static PositionResponse from(JobPositionEntity entity, List<String> required,
-                                        List<String> preferred, Integer resumeCount) {
+                                        List<String> preferred, Integer resumeCount,
+                                        com.example.agent.service.company.PositionDepartmentService.View department) {
         return new PositionResponse(
                 entity.getId(),
                 entity.getTitle(),
-                entity.getDepartment(),
+                department.name(),
                 entity.getCity(),
                 entity.getSalaryMin(),
                 entity.getSalaryMax(),
@@ -39,6 +43,6 @@ public record PositionResponse(
                 entity.getEducation(),
                 entity.getDescription(),
                 entity.getStatus(),
-                resumeCount);
+                resumeCount, entity.getCompanyId(), entity.getDepartmentId(), department.status());
     }
 }

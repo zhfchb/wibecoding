@@ -15,6 +15,9 @@ def api(route):
         submitted.append(route.request.post_data_json)
         route.fulfill(status=400, json={"message": "fixture only: submission captured"})
     else:
+        if path.endswith('/company/departments'):
+            route.fulfill(json=[{'id': 7, 'name': '正式研发部', 'status': 'ACTIVE'}])
+            return
         assert path.endswith("/positions"), path
         route.fulfill(json=[{"id": 1, "title": "界面测试岗位", "department": "既有事业部", "city": "宁波",
                              "status": "OPEN", "requiredSkills": ["Java"], "resumeCount": 0}])
@@ -31,14 +34,10 @@ with sync_playwright() as p:
     page.wait_for_load_state("networkidle")
     page.get_by_role("button", name=re.compile("创建招聘岗位$")).click()
     page.get_by_placeholder("如：Java 后端工程师").fill("表单验收")
-    department = page.get_by_placeholder("选择或输入部门")
+    department = page.locator('#departmentId')
     department.click()
-    page.locator(".ant-select-dropdown:visible .ant-select-item-option-content").filter(has_text=re.compile("^技术部$")).click()
-    expect(department).to_have_value("技术部")
-    department.fill("既有")
-    expect(page.locator(".ant-select-dropdown:visible .ant-select-item-option-content").filter(has_text="既有事业部")).to_be_visible()
-    department.fill("平台工程部")
-    department.press("Tab")
+    page.locator(".ant-select-dropdown:visible .ant-select-item-option-content").filter(has_text=re.compile("^正式研发部$")).click()
+    expect(page.locator('.ant-select-selection-item').filter(has_text='正式研发部')).to_be_visible()
     city = page.get_by_placeholder("选择或输入城市")
     city.click()
     page.locator(".ant-select-dropdown:visible .ant-select-item-option-content").filter(has_text=re.compile("^上海$")).click()
@@ -62,9 +61,10 @@ with sync_playwright() as p:
     page.get_by_role("button", name=re.compile("^创\\s*建$")).click()
     expect(page.get_by_text("fixture only: submission captured", exact=False)).to_be_visible()
     assert len(submitted) == 1, submitted
-    assert submitted[0]["department"] == "平台工程部"
+    assert submitted[0]["departmentId"] == 7
+    assert 'department' not in submitted[0]
     assert submitted[0]["city"] == "珠海"
     assert (submitted[0]["salaryMin"], submitted[0]["salaryMax"]) == (11, 12)
     assert not errors, errors
     browser.close()
-print("PASS department/city suggestions and custom values; salary 11→12 minimum, keyboard bound, lower-bound increase, submitted payload")
+print("PASS formal company department ID and city custom value; salary minimum, keyboard bound, lower-bound increase, submitted payload")

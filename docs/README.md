@@ -7,7 +7,7 @@
 | 产品 | [用户定位与角色权限](product/用户定位与角色权限.md)、[当前产品定位](product/PRODUCT.md)、[招聘业务规划](product/智能招聘助手业务规划.md) |
 | 开发 | [环境配置](development/环境配置说明.md)、[本地 Docker](development/LOCAL_DOCKER.md)、[AI 迁移说明](development/LangChain分阶段迁移.md) |
 | 开发参考 | [架构大纲](development/项目架构大纲.md)、[使用文档](development/使用文档.md)、[工作约定](development/项目工作约定.md)、[Qdrant 迁移](development/qdrant-migration.md) |
-| 验收 | [部门管理](acceptance/DEPARTMENTS.md)、[招聘流程可靠性](acceptance/RECRUITMENT_ACCEPTANCE.md)、[持久化匹配任务](acceptance/MATCH_TASKS.md)、[失败简历重解析](acceptance/RESUME_PARSE_TASKS.md)、[题目与报告任务](acceptance/MATERIAL_TASKS.md) |
+| 验收 | [岗位部门关联](acceptance/POSITION_DEPARTMENTS.md)、[部门管理](acceptance/DEPARTMENTS.md)、[招聘流程可靠性](acceptance/RECRUITMENT_ACCEPTANCE.md)、[持久化匹配任务](acceptance/MATCH_TASKS.md)、[失败简历重解析](acceptance/RESUME_PARSE_TASKS.md)、[题目与报告任务](acceptance/MATERIAL_TASKS.md) |
 | 历史与学习 | [学习路线](archive/学习路线.md)、[原理笔记](archive/核心原理笔记.md)、[面试手册](archive/面试问答手册.md)、[早期选型需求](archive/开源项目选型需求文档.md) |
 | 变更 | [变更日志](变更日志.md) |
 

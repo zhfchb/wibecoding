@@ -18,10 +18,14 @@ class RecruitmentResumeParsingTest {
     void validatesSalaryRangeForCreateAndUpdate() {
         var positions = mock(JobPositionMapper.class);
         var json = new ObjectMapper();
+        var departments = mock(com.example.agent.service.company.PositionDepartmentService.class);
+        doAnswer(call -> { positions.insert(call.getArgument(0, JobPositionEntity.class)); return null; }).when(departments).create(any(), any());
+        when(departments.view(any())).thenAnswer(call -> new com.example.agent.service.company.PositionDepartmentService.View(
+                call.getArgument(0, JobPositionEntity.class).getDepartment(),null));
         var service = new RecruitmentServiceImpl(positions, mock(CandidateResumeMapper.class), mock(MatchResultMapper.class),
                 mock(InterviewQuestionMapper.class), mock(CandidateReportMapper.class), mock(DocumentMapper.class),
                 mock(KnowledgeService.class), mock(AiGateway.class), json, mock(ResumeParser.class),
-                new com.example.agent.service.resumes.ResumeProfileReader(json));
+                new com.example.agent.service.resumes.ResumeProfileReader(json), departments);
         var request = new com.example.agent.domain.recruitment.PositionRequest();
         request.setTitle("薪资校验");
         for (Integer[] range : new Integer[][]{{11,11},{11,10},{-1,12},{null,12},{11,null}}) {
@@ -52,7 +56,8 @@ class RecruitmentResumeParsingTest {
                 .thenThrow(new IllegalStateException("AI service unavailable"));
         var service = new RecruitmentServiceImpl(positions, resumes, mock(MatchResultMapper.class),
                 mock(InterviewQuestionMapper.class), mock(CandidateReportMapper.class), mock(DocumentMapper.class),
-                knowledge, mock(AiGateway.class), json, parser, new com.example.agent.service.resumes.ResumeProfileReader(json));
+                knowledge, mock(AiGateway.class), json, parser, new com.example.agent.service.resumes.ResumeProfileReader(json),
+                mock(com.example.agent.service.company.PositionDepartmentService.class));
         var file = new MockMultipartFile("file", "resume.md", "text/plain", "Java".getBytes());
         var response = service.uploadResumes(1L, List.of(file, file));
         assertThat(response.successCount()).isEqualTo(1);

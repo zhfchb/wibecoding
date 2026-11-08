@@ -57,6 +57,7 @@ public class RecruitmentServiceImpl implements RecruitmentService {
     private final ObjectMapper objectMapper;
     private final ResumeParser resumeParser;
     private final com.example.agent.service.resumes.ResumeProfileReader resumeProfiles;
+    private final com.example.agent.service.company.PositionDepartmentService positionDepartments;
 
     // ==================== 岗位管理 ====================
 
@@ -70,7 +71,7 @@ public class RecruitmentServiceImpl implements RecruitmentService {
         entity.setStatus("OPEN");
         entity.setCreatedAt(LocalDateTime.now());
         entity.setUpdatedAt(LocalDateTime.now());
-        jobPositionMapper.insert(entity);
+        positionDepartments.create(entity, request.getDepartmentId());
         return toResponse(entity, 0);
     }
 
@@ -143,7 +144,7 @@ public class RecruitmentServiceImpl implements RecruitmentService {
         JobPositionEntity entity = requireOwnedPosition(id);
         applyRequest(entity, request);
         entity.setUpdatedAt(LocalDateTime.now());
-        jobPositionMapper.updateById(entity);
+        positionDepartments.update(entity, request.getDepartmentId());
         Long count = candidateResumeMapper.selectCount(
                 new LambdaQueryWrapper<CandidateResumeEntity>()
                         .eq(CandidateResumeEntity::getPositionId, id));
@@ -409,7 +410,7 @@ public class RecruitmentServiceImpl implements RecruitmentService {
         return PositionResponse.from(entity,
                 readSkills(entity.getRequiredSkills()),
                 readSkills(entity.getPreferredSkills()),
-                resumeCount);
+                resumeCount, positionDepartments.view(entity));
     }
 
     private List<String> readSkills(String json) {

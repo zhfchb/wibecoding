@@ -48,6 +48,15 @@ public class RecruitmentController {
     private final MatchTaskService matchTasks;
     private final ResumeParseTaskService resumeParseTasks;
     private final com.example.agent.service.materials.MaterialTaskService materialTasks;
+    private final com.example.agent.service.company.PositionDepartmentService positionDepartments;
+
+    public record DepartmentBinding(Long departmentId) {}
+
+    @PutMapping("/positions/{id}/department")
+    public PositionResponse bindDepartment(@PathVariable Long id, @RequestBody DepartmentBinding input) {
+        positionDepartments.bind(id, input.departmentId());
+        return recruitmentService.getPosition(id);
+    }
 
     // ==================== 岗位管理 ====================
 

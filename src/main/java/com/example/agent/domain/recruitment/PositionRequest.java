@@ -15,6 +15,9 @@ public class PositionRequest {
 
     private String department;
 
+    /** Formal company department; null keeps the existing association on update. */
+    private Long departmentId;
+
     private String city;
 
     /** 薪资下限(k) */

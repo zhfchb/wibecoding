@@ -9,6 +9,7 @@ import {
 } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import { recruitmentApi } from '../api'
+import CompanyDepartmentSelect from '../components/CompanyDepartmentSelect'
 
 const { Text } = Typography
 
@@ -33,7 +34,6 @@ function PositionFormModal({ open, onClose, onCreated, positions = [] }) {
   const minimumUpper = Number.isInteger(salaryMin) ? salaryMin + 1 : 1
   const suggestions = (field, defaults) => [...new Set([...defaults, ...positions.map(p => p[field])]
     .filter(value => typeof value === 'string' && value.trim()).map(value => value.trim()))].map(value => ({ value }))
-  const departments = suggestions('department', ['技术部', '研发部', '产品部', '测试部', '运维部', '数据部', '市场部', '人力资源部'])
   const cities = suggestions('city', ['北京', '上海', '广州', '深圳', '杭州', '南京', '苏州', '成都', '武汉', '西安', '重庆', '天津', '郑州', '长沙', '厦门', '合肥'])
   const filterOption = (input, option) => option.value.toLowerCase().includes(input.trim().toLowerCase())
 
@@ -77,10 +77,8 @@ function PositionFormModal({ open, onClose, onCreated, positions = [] }) {
           <Input placeholder="如：Java 后端工程师" />
         </Form.Item>
         <Space size="middle" style={{ display: 'flex', flexWrap: 'wrap' }}>
-          <Form.Item name="department" label="部门" style={{ width: 190 }}>
-            <AutoComplete options={departments} filterOption={filterOption} allowClear>
-              <Input placeholder="选择或输入部门" suffix={<DownOutlined />} />
-            </AutoComplete>
+          <Form.Item name="departmentId" label="部门（选填）" style={{ width: 190 }}>
+            {open && <CompanyDepartmentSelect refreshKey={open} />}
           </Form.Item>
           <Form.Item name="city" label="城市" style={{ width: 190 }}>
             <AutoComplete options={cities} filterOption={filterOption} allowClear>

@@ -26,6 +26,10 @@ public class JobPositionEntity {
     /** 部门 */
     private String department;
 
+    private Long companyId;
+
+    private Long departmentId;
+
     /** 工作城市 */
     private String city;
 
