@@ -23,19 +23,22 @@ public class InterviewAssignmentService {
     private final JobPositionMapper positions;
     private final CandidateResumeMapper resumes;
     private final ObjectMapper json;
+    private final InterviewScheduleService schedules;
     public record Evaluation(Integer score,String recommendation,String strengths,String concerns,String summary,LocalDateTime submittedAt) {}
-    public record Assignment(Long id,Long positionId,Long resumeId,Long interviewerId,String username,String title,String candidateName,String status,Integer version,Evaluation evaluation) {}
+    public record Assignment(Long id,Long positionId,Long resumeId,Long interviewerId,String username,String title,String candidateName,String status,Integer version,Evaluation evaluation,InterviewScheduleService.Schedule schedule,String flowStatus) {}
     public record EvaluationInput(Integer version,Integer score,String recommendation,String strengths,String concerns,String summary,boolean submit) {}
     public record PositionBrief(String title,String department,String city,List<String> requiredSkills,Integer minYears,String education,String description) {}
     public record CandidateBrief(String name,List<String> skills,Integer yearsExp,String education,String lastCompany) {}
     public record Question(String category,String question,String assessPoint,String referenceAnswer,String difficulty) {}
     public record Detail(Assignment assignment,PositionBrief position,CandidateBrief candidate,List<Question> questions) {}
     private static final String BASE="""
-        SELECT a.*,u.username,p.title,r.candidate_name,e.assignment_id AS evaluation_id,e.score,e.recommendation,e.strengths,e.concerns,e.summary,e.submitted_at
+        SELECT a.*,u.username,p.title,r.candidate_name,e.assignment_id AS evaluation_id,e.score,e.recommendation,e.strengths,e.concerns,e.summary,e.submitted_at,
+          s.assignment_id AS schedule_id,s.version AS schedule_version,s.status AS schedule_status,s.start_utc,s.end_utc,s.time_zone,s.mode,s.location,s.meeting_url,s.reason,s.updated_by,s.updated_at AS schedule_updated_at
         FROM recruitment_interview_assignment a JOIN job_position p ON p.id=a.position_id
         JOIN candidate_resume r ON r.id=a.resume_id AND r.position_id=p.id AND r.user_id=p.user_id
         JOIN sys_user u ON u.id=a.interviewer_id
         LEFT JOIN recruitment_interview_evaluation e ON e.assignment_id=a.id
+        LEFT JOIN recruitment_interview_schedule s ON s.assignment_id=a.id
         """;
     private static final String LIVE="""
         AND u.deleted=0 AND EXISTS(SELECT 1 FROM recruitment_company_member i
@@ -47,7 +50,8 @@ public class InterviewAssignmentService {
             var submitted=r.getTimestamp("submitted_at");
             var evaluation=r.getObject("evaluation_id")==null || (!drafts && submitted==null)?null:
                     new Evaluation(r.getObject("score",Integer.class),r.getString("recommendation"),r.getString("strengths"),r.getString("concerns"),r.getString("summary"),submitted==null?null:submitted.toLocalDateTime());
-            return new Assignment(r.getLong("id"),r.getLong("position_id"),r.getLong("resume_id"),r.getLong("interviewer_id"),r.getString("username"),r.getString("title"),r.getString("candidate_name"),r.getString("status"),r.getInt("version"),evaluation);
+            var schedule=InterviewScheduleService.fromAssignmentRow(r);
+            return new Assignment(r.getLong("id"),r.getLong("position_id"),r.getLong("resume_id"),r.getLong("interviewer_id"),r.getString("username"),r.getString("title"),r.getString("candidate_name"),r.getString("status"),r.getInt("version"),evaluation,schedule,schedules.flow(r.getString("status"),schedule));
         };
     }
     public List<Assignment> managed(Long positionId) {
@@ -110,8 +114,10 @@ public class InterviewAssignmentService {
     @Transactional
     public void revoke(Long id) {
         Long positionId=positionId(id);access.operator(positionId,access.user(),true);
-        if(db.update("UPDATE recruitment_interview_assignment SET status='REVOKED',version=version+1,updated_at=? WHERE id=? AND status<>'REVOKED'",LocalDateTime.now(),id)>0)
+        if(db.update("UPDATE recruitment_interview_assignment SET status='REVOKED',version=version+1,updated_at=? WHERE id=? AND status<>'REVOKED'",LocalDateTime.now(),id)>0) {
+            schedules.revoked(id);
             activity.log(positionId,access.user(),"INTERVIEW_REVOKED",id.toString());
+        }
     }
     @Transactional
     public Detail save(Long id,EvaluationInput input) {
@@ -121,6 +127,7 @@ public class InterviewAssignmentService {
         if("SUBMITTED".equals(assignment.status())) throw new ResponseStatusException(HttpStatus.CONFLICT,"评价已提交，不能修改");
         if(input==null || input.version()==null) throw new IllegalArgumentException("缺少评价版本，请重新加载");
         if(!Objects.equals(input.version(),assignment.version())) throw new ResponseStatusException(HttpStatus.CONFLICT,"评价版本已变化，请重新加载");
+        schedules.checkEvaluation(id,input.submit());
         if(input.score()!=null && (input.score()<1 || input.score()>5)) throw new IllegalArgumentException("评分范围为1～5");
         if(input.recommendation()!=null && !List.of("PASS","HOLD","NO").contains(input.recommendation())) throw new IllegalArgumentException("评价建议无效");
         if(input.submit() && (input.score()==null || input.recommendation()==null || input.summary()==null || input.summary().isBlank())) throw new IllegalArgumentException("提交时请填写评分、建议与评价总结");
@@ -131,10 +138,11 @@ public class InterviewAssignmentService {
         if(updated==0) db.update("INSERT INTO recruitment_interview_evaluation(assignment_id,score,recommendation,strengths,concerns,summary,submitted_at) VALUES (?,?,?,?,?,?,?)",
                 id,input.score(),input.recommendation(),input.strengths(),input.concerns(),input.summary(),submitted);
         db.update("UPDATE recruitment_interview_assignment SET status=?,version=version+1,updated_at=? WHERE id=?",input.submit()?"SUBMITTED":"DRAFT",LocalDateTime.now(),id);
-        if(input.submit()) activity.log(positionId,access.user(),"INTERVIEW_EVALUATED",id.toString());
+        if(input.submit()) { schedules.evaluated(id);activity.log(positionId,access.user(),"INTERVIEW_EVALUATED",id.toString()); }
         return detail(id);
     }
     public void cleanupForResume(Long resumeId) {
+        schedules.cleanup(resumeId);
         db.update("DELETE FROM recruitment_interview_evaluation WHERE assignment_id IN (SELECT id FROM recruitment_interview_assignment WHERE resume_id=?)",resumeId);
         db.update("DELETE FROM recruitment_interview_assignment WHERE resume_id=?",resumeId);
     }

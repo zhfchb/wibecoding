@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Alert, Button, Card, Descriptions, Empty, Form, Input, InputNumber, Modal, Select, Space, Spin, Table, Tag, Typography, message } from 'antd'
 import api from '../api'
 import PageIntro from '../components/PageIntro'
+import { ScheduleInfo, interviewFlow } from '../components/InterviewSchedule'
 
 const labels = { ASSIGNED: '待面试', DRAFT: '评价草稿', SUBMITTED: '已提交' }
 export default function InterviewWorkbenchPage() {
@@ -23,6 +24,7 @@ export default function InterviewWorkbenchPage() {
     finally { setLoading(false) }
   }, [])
   useEffect(() => { load() }, [load])
+  useEffect(() => { const timer = setInterval(load, 30000); return () => clearInterval(timer) }, [load])
   const show = async id => {
     const current = ++sequence.current
     setOpening(true)
@@ -49,12 +51,14 @@ export default function InterviewWorkbenchPage() {
       try {
         const { data } = await api.get(`/interviews/assignments/${detail.assignment.id}`)
         if (active && data.assignment.version !== detail.assignment.version) setConflict(true)
+        else if (active && (data.assignment.schedule?.version !== detail.assignment.schedule?.version || data.assignment.flowStatus !== detail.assignment.flowStatus))
+          setDetail(previous => previous?.assignment.id === data.assignment.id ? { ...previous, assignment: { ...previous.assignment, schedule: data.assignment.schedule, flowStatus: data.assignment.flowStatus } } : previous)
       } catch (e) {
         if (active && [403, 404].includes(e.response?.status)) { sequence.current++; setDetail(null); setDirty(false); load(); message.warning('面试分配已撤销或不可访问') }
       }
     }, 10000)
     return () => { active = false; clearInterval(timer) }
-  }, [detail?.assignment.id, detail?.assignment.version, load])
+  }, [detail?.assignment.id, detail?.assignment.version, detail?.assignment.schedule?.version, detail?.assignment.flowStatus, load])
   const save = async submit => {
     if (inFlight.current) return
     let values
@@ -66,28 +70,36 @@ export default function InterviewWorkbenchPage() {
       setDetail(data); setDirty(false); setConflict(false); load(); message.success(submit ? '评价已提交，提交后不能修改' : '评价草稿已保存')
     } catch (e) {
       if ([403, 404].includes(e.response?.status)) { sequence.current++; setDetail(null); setDirty(false); await load(); message.warning('面试分配已撤销或不可访问') }
+      else if (e.response?.status === 409 && e.response?.data?.error?.startsWith('SCHEDULE_')) message.warning(e.response.data.message)
       else if (e.response?.status === 409) { setConflict(true); message.warning('评价版本已变化或已提交，请重新加载确认') }
       else message.error(e.response?.data?.message || '保存结果尚未确认，请重新加载核对')
     } finally { inFlight.current = false; setSaving(false) }
   }
   const submitted = detail?.assignment.status === 'SUBMITTED'
+  const scheduleBlocked = ['CANCELLED', 'NO_SHOW'].includes(detail?.assignment.schedule?.status)
+  const notEnded = detail?.assignment.schedule && Date.parse(detail.assignment.schedule.endAt) > Date.now()
   return <div>
     <PageIntro eyebrow="INTERVIEW WORKSPACE" title="我的面试安排">围绕候选人经历与岗位要求独立评价。草稿仅本人可见；提交后供招聘负责人参考，不自动改变筛选决策。</PageIntro>
     <Card title={`获分配的面试（${rows.length}）`} extra={<Button loading={loading} onClick={load}>刷新安排</Button>}>
       {error && <Alert type="warning" message={error} style={{ marginBottom: 16 }} />}
       <Table rowKey="id" loading={loading} dataSource={rows} scroll={{ x: 600 }} locale={{ emptyText: <Empty description="暂无面试安排，请联系招聘负责人分配候选人" /> }} columns={[
         { title: '岗位', dataIndex: 'title' }, { title: '候选人', dataIndex: 'candidateName' },
+        { title: '时间与方式', width: 260, render: (_, row) => <ScheduleInfo schedule={row.schedule} /> },
+        { title: '面试进度', dataIndex: 'flowStatus', render: value => interviewFlow[value] || '待排期' },
         { title: '状态', dataIndex: 'status', render: s => <Tag>{labels[s] || s}</Tag> },
         { title: '操作', render: (_, row) => <Button type="link" loading={opening} onClick={() => show(row.id)}>{row.status === 'SUBMITTED' ? '查看评价' : '准备面试与评价'}</Button> },
       ]} />
     </Card>
     <Modal title={`面试准备 · ${detail?.candidate.name || ''}`} open={!!detail} onCancel={close} width={800} footer={detail && <Space wrap>
       <Button disabled={saving} onClick={() => dirty ? Modal.confirm({ title: '重新加载会丢弃未保存的内容，是否继续？', onOk: () => show(detail.assignment.id), okText: '重新加载', cancelText: '取消' }) : show(detail.assignment.id)}>重新加载</Button>
-      {!submitted && <><Button disabled={saving || conflict} onClick={() => save(false)}>保存草稿</Button><Button type="primary" disabled={saving || conflict} loading={saving} onClick={() => save(true)}>提交评价</Button></>}
+      {!submitted && <><Button disabled={saving || conflict || scheduleBlocked} onClick={() => save(false)}>保存草稿</Button><Button type="primary" disabled={saving || conflict || scheduleBlocked || !!notEnded} loading={saving} onClick={() => save(true)}>提交评价</Button></>}
     </Space>}>
       {detail && <Spin spinning={opening}>
         {conflict && <Alert type="warning" showIcon message="评价已有更新，请重新加载后继续" style={{ marginBottom: 16 }} />}
         {submitted && <Alert type="success" message="评价已提交，不能修改" style={{ marginBottom: 16 }} />}
+        {scheduleBlocked && <Alert type="warning" message="排期已取消或标记未到场，当前不能保存评价，已保存草稿保留" style={{ marginBottom: 16 }} />}
+        {!submitted && notEnded && !scheduleBlocked && <Alert type="info" message="面试尚未到计划结束时间，可先保存草稿" style={{ marginBottom: 16 }} />}
+        {detail.assignment.schedule && <Card size="small" title={`面试安排 · ${interviewFlow[detail.assignment.flowStatus] || ''}`} style={{ marginBottom: 16 }}><ScheduleInfo schedule={detail.assignment.schedule} /></Card>}
         <Descriptions bordered size="small" column={1} items={[
           { key: 'position', label: '岗位', children: detail.position.title },
           { key: 'requirements', label: '岗位要求', children: `${detail.position.requiredSkills.join('、')} · ${detail.position.minYears || 0}年以上 · ${detail.position.education || '学历不限'}` },
@@ -99,7 +111,7 @@ export default function InterviewWorkbenchPage() {
         {detail.questions.length ? detail.questions.map((q, index) => <Card key={index} size="small" style={{ marginBottom: 8 }} title={`${index + 1}. ${q.category || '面试问题'}`}><Typography.Paragraph>{q.question}</Typography.Paragraph><Typography.Text type="secondary">考察：{q.assessPoint || '待确认'}；参考：{q.referenceAnswer || '未提供'}</Typography.Text></Card>) : <Empty description="招聘负责人尚未准备面试题" />}
         <Typography.Title level={5}>面试评价</Typography.Title>
         <Typography.Paragraph type="secondary">草稿仅本人可见；提交后评价将锁定，并供招聘负责人查看。</Typography.Paragraph>
-        <Form form={form} layout="vertical" disabled={submitted || saving || conflict} onValuesChange={() => setDirty(true)}>
+        <Form form={form} layout="vertical" disabled={submitted || saving || conflict || scheduleBlocked} onValuesChange={() => setDirty(true)}>
           <Space wrap align="start"><Form.Item name="score" label="综合评分（1～5）"><InputNumber min={1} max={5} precision={0} /></Form.Item><Form.Item name="recommendation" label="面试建议"><Select style={{ width: 180 }} allowClear options={[{ value: 'PASS', label: '建议通过' }, { value: 'HOLD', label: '待进一步核实' }, { value: 'NO', label: '建议不通过' }]} /></Form.Item></Space>
           {[['strengths', '优势证据'], ['concerns', '待核实问题'], ['summary', '评价总结（提交时必填）']].map(([name, label]) => <Form.Item key={name} name={name} label={label} rules={[{ max: 3000 }]}><Input.TextArea rows={3} maxLength={3000} showCount /></Form.Item>)}
         </Form>

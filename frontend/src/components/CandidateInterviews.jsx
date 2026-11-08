@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Alert, Button, Descriptions, Modal, Popconfirm, Select, Space, Table, Tag, Typography, message } from 'antd'
 import api from '../api'
+import InterviewSchedule, { ScheduleInfo, interviewFlow } from './InterviewSchedule'
 
 const states = { ASSIGNED: '待面试', DRAFT: '评价草稿', SUBMITTED: '已提交', REVOKED: '已撤销' }
 export default function CandidateInterviews({ positionId, resume }) {
@@ -40,8 +41,10 @@ export default function CandidateInterviews({ positionId, resume }) {
           <Button type="primary" disabled={selected == null || loading || saving} loading={saving} onClick={() => mutate(null)}>确认分配</Button>
           <Button loading={loading} disabled={saving} onClick={load}>刷新分配</Button>
         </Space>
-        <Table rowKey="id" size="small" loading={loading} dataSource={rows} pagination={false} scroll={{ x: 500 }} locale={{ emptyText: '尚未分配面试官' }} columns={[
+        <Table rowKey="id" size="small" loading={loading} dataSource={rows} pagination={false} scroll={{ x: 900 }} locale={{ emptyText: '尚未分配面试官' }} columns={[
           { title: '面试官', dataIndex: 'username' }, { title: '状态', dataIndex: 'status', render: s => <Tag>{states[s] || s}</Tag> },
+          { title: '面试进度', dataIndex: 'flowStatus', render: value => interviewFlow[value] || '待排期' },
+          { title: '时间与方式', width: 260, render: (_, row) => <><ScheduleInfo schedule={row.schedule} /><InterviewSchedule assignment={row} onChanged={load} /></> },
           { title: '评价', render: (_, row) => row.evaluation ? <Button size="small" type="link" onClick={() => setEvaluation(row.evaluation)}>查看已提交评价</Button> : row.status === 'DRAFT' ? '草稿仅面试官本人可见' : '尚未提交' },
           { title: '操作', render: (_, row) => row.status !== 'REVOKED' && <Popconfirm title="撤销面试分配？" description="后续访问与评价保存将被拒绝，已提交的评价保留。" onConfirm={() => mutate(row)} okText="撤销分配" cancelText="取消"><Button type="link" danger disabled={saving}>撤销</Button></Popconfirm> },
         ]} />

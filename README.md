@@ -90,9 +90,11 @@ mvn test '-Dtest=PythonAiE2ETest'
 
 ## 文档
 
+- [面试排期与流程状态](docs/acceptance/INTERVIEW_SCHEDULING.md)：时区、冲突校验、改期取消、完成状态及历史；不发送外部通知。
+
 - [公司资料完善](docs/acceptance/COMPANY_PROFILE.md)：省市联动、必填与选填资料；已有库需执行 `deploy/migrations/20261108_company_profile.sql`。
 
-- [公司管理分阶段计划](docs/development/公司管理分阶段计划.md)：第一阶段公司与成员基础已实现，已有数据库需执行 `deploy/migrations/20261108_company_foundation.sql`；部门和协作后续分阶段提交。
+- [公司管理分阶段计划](docs/development/公司管理分阶段计划.md)：公司、部门、岗位协作、面试官与排期已分阶段实现；已有数据库按环境说明执行对应迁移。
 
 - [文档导航](docs/README.md)：产品、开发、验收与历史资料。
 - [部署入口](deploy/README.md)：本地、生产与基础服务的启动方式。

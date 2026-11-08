@@ -10,6 +10,10 @@ import java.util.List;
 @RequestMapping("/api/v1")
 public class InterviewAssignmentController {
     private final InterviewAssignmentService interviews;
+    private final com.example.agent.service.company.InterviewScheduleService schedules;
+    @PutMapping("/recruitment/interviews/{id}/schedule") public com.example.agent.service.company.InterviewScheduleService.Schedule schedule(@PathVariable Long id,@RequestBody com.example.agent.service.company.InterviewScheduleService.Input input) { return schedules.put(id,input); }
+    @PostMapping("/recruitment/interviews/{id}/schedule/state") public com.example.agent.service.company.InterviewScheduleService.Schedule state(@PathVariable Long id,@RequestBody com.example.agent.service.company.InterviewScheduleService.Transition input) { return schedules.transition(id,input); }
+    @GetMapping("/recruitment/interviews/{id}/schedule/history") public List<com.example.agent.service.company.InterviewScheduleService.Event> history(@PathVariable Long id) { return schedules.history(id); }
     public record AssignmentInput(Long interviewerId) {}
     @GetMapping("/interviews/assignments") public List<InterviewAssignmentService.Assignment> mine() { return interviews.mine(); }
     @GetMapping("/interviews/assignments/{id}") public InterviewAssignmentService.Detail detail(@PathVariable Long id) { return interviews.detail(id); }
