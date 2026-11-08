@@ -53,7 +53,7 @@ def api(route):
         data = [{"id": n, "candidateName": name, "skills": ["Java"], "parseStatus": "PARSED", "retryable": False}
                 for n, name in [(10, "候选人甲"), (20, "候选人乙")]]
     elif path.endswith("/positions/1"):
-        data = {"id": 1, "title": "资料生成测试岗位", "status": "OPEN", "requiredSkills": ["Java"], "preferredSkills": []}
+        data = {"id": 1, "canManage": True, "title": "资料生成测试岗位", "status": "OPEN", "requiredSkills": ["Java"], "preferredSkills": []}
     else:
         raise AssertionError("Unexpected request " + method + " " + path)
     route.fulfill(status=202 if material and method == "POST" else 200, json=data)

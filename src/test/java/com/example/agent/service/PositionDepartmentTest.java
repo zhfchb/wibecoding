@@ -109,7 +109,7 @@ class PositionDepartmentTest {
         var hrJob=recruitment.createPosition(request(dep));assertThat(hrJob.companyId()).isEqualTo(company);
         assertThat(recruitment.listPositions()).extracting("id").containsExactly(hrJob.id());
         assertThatThrownBy(()->bindings.bind(adminJob.id(),dep)).isInstanceOf(ResponseStatusException.class);
-        assertThatThrownBy(()->recruitment.getPosition(adminJob.id())).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(()->recruitment.getPosition(adminJob.id())).isInstanceOf(ResponseStatusException.class);
         bindings.bind(hrJob.id(),dep);
     }
 

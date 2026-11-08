@@ -6,11 +6,8 @@ import com.example.agent.entity.CandidateResumeEntity;
 import com.example.agent.entity.InterviewQuestionEntity;
 import com.example.agent.entity.JobPositionEntity;
 import com.example.agent.entity.MatchResultEntity;
-import com.example.agent.mapper.CandidateResumeMapper;
 import com.example.agent.mapper.InterviewQuestionMapper;
-import com.example.agent.mapper.JobPositionMapper;
 import com.example.agent.mapper.MatchResultMapper;
-import com.example.agent.security.SecurityUtils;
 import com.example.agent.service.AiGateway;
 import com.example.agent.service.InterviewService;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -33,12 +30,11 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 public class InterviewServiceImpl implements InterviewService {
+    private final com.example.agent.service.company.PositionAccess positionAccess;
 
     /** 送入 LLM 的简历原文最大长度（项目/行为题需要细节，但防上下文过长） */
     private static final int MAX_RESUME_TEXT = 3000;
 
-    private final JobPositionMapper jobPositionMapper;
-    private final CandidateResumeMapper candidateResumeMapper;
     private final MatchResultMapper matchResultMapper;
     private final InterviewQuestionMapper interviewQuestionMapper;
     private final AiGateway aiGateway;
@@ -59,7 +55,7 @@ public class InterviewServiceImpl implements InterviewService {
 
     @Override
     public List<InterviewQuestionResponse> listQuestions(Long resumeId) {
-        CandidateResumeEntity resume = requireOwnedResume(resumeId);
+        CandidateResumeEntity resume = positionAccess.resume(resumeId);
         List<InterviewQuestionEntity> questions = interviewQuestionMapper.selectList(
                 new LambdaQueryWrapper<InterviewQuestionEntity>()
                         .eq(InterviewQuestionEntity::getResumeId, resumeId)
@@ -144,25 +140,6 @@ public class InterviewServiceImpl implements InterviewService {
             throw new IllegalArgumentException("LLM 未生成有效面试题");
         }
         return result;
-    }
-
-    private CandidateResumeEntity requireOwnedResume(Long resumeId) {
-        if (resumeId == null) {
-            throw new IllegalArgumentException("简历 ID 不能为空");
-        }
-        CandidateResumeEntity resume = candidateResumeMapper.selectById(resumeId);
-        if (resume == null) {
-            throw new IllegalArgumentException("简历不存在");
-        }
-        JobPositionEntity position = jobPositionMapper.selectById(resume.getPositionId());
-        if (position == null) {
-            throw new IllegalArgumentException("简历所属岗位不存在");
-        }
-        Long userId = SecurityUtils.getCurrentUserId();
-        if (userId != null && !userId.equals(position.getUserId())) {
-            throw new IllegalArgumentException("简历不存在或无权操作");
-        }
-        return resume;
     }
 
     private String textOrNull(JsonNode node, String field) {

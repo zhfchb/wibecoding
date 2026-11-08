@@ -58,6 +58,7 @@ public class RecruitmentServiceImpl implements RecruitmentService {
     private final ResumeParser resumeParser;
     private final com.example.agent.service.resumes.ResumeProfileReader resumeProfiles;
     private final com.example.agent.service.company.PositionDepartmentService positionDepartments;
+    private final com.example.agent.service.company.PositionAccess positionAccess;
 
     // ==================== 岗位管理 ====================
 
@@ -113,10 +114,10 @@ public class RecruitmentServiceImpl implements RecruitmentService {
 
     @Override
     public List<PositionResponse> listPositions() {
-        Long userId = SecurityUtils.getCurrentUserId();
         LambdaQueryWrapper<JobPositionEntity> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(JobPositionEntity::getUserId, userId)
-                .orderByDesc(JobPositionEntity::getCreatedAt);
+        var visible=positionAccess.visibleIds();
+        if(visible.isEmpty()) return List.of();
+        wrapper.in(JobPositionEntity::getId,visible).orderByDesc(JobPositionEntity::getCreatedAt);
         List<JobPositionEntity> positions = jobPositionMapper.selectList(wrapper);
 
         List<PositionResponse> result = new ArrayList<>();
@@ -131,7 +132,7 @@ public class RecruitmentServiceImpl implements RecruitmentService {
 
     @Override
     public PositionResponse getPosition(Long id) {
-        JobPositionEntity entity = requireOwnedPosition(id);
+        JobPositionEntity entity = positionAccess.readable(id);
         Long count = candidateResumeMapper.selectCount(
                 new LambdaQueryWrapper<CandidateResumeEntity>()
                         .eq(CandidateResumeEntity::getPositionId, id));
@@ -162,7 +163,7 @@ public class RecruitmentServiceImpl implements RecruitmentService {
     @Override
     @Transactional
     public void deletePosition(Long id) {
-        requireOwnedPosition(id);
+        positionAccess.lockOwned(id);
         // 删除岗位下全部简历（连带向量）
         List<CandidateResumeEntity> resumes = candidateResumeMapper.selectList(
                 new LambdaQueryWrapper<CandidateResumeEntity>()
@@ -177,6 +178,8 @@ public class RecruitmentServiceImpl implements RecruitmentService {
                 .eq(com.example.agent.entity.InterviewQuestionEntity::getPositionId, id));
         candidateReportMapper.delete(new LambdaQueryWrapper<com.example.agent.entity.CandidateReportEntity>()
                 .eq(com.example.agent.entity.CandidateReportEntity::getPositionId, id));
+        // Grants never outlive the job; task/document ownership stays with its creator.
+        positionAccess.removeGrants(id);
         jobPositionMapper.deleteById(id);
         log.info("岗位已删除: positionId={}, cascadedResumes={}", id, resumes.size());
     }
@@ -252,7 +255,7 @@ public class RecruitmentServiceImpl implements RecruitmentService {
 
     @Override
     public List<ResumeResponse> listResumes(Long positionId) {
-        requireOwnedPosition(positionId);
+        positionAccess.readable(positionId);
         List<CandidateResumeEntity> resumes = candidateResumeMapper.selectList(
                 new LambdaQueryWrapper<CandidateResumeEntity>()
                         .eq(CandidateResumeEntity::getPositionId, positionId)
@@ -367,18 +370,7 @@ public class RecruitmentServiceImpl implements RecruitmentService {
     // ==================== 工具方法 ====================
 
     private JobPositionEntity requireOwnedPosition(Long id) {
-        if (id == null) {
-            throw new IllegalArgumentException("岗位 ID 不能为空");
-        }
-        JobPositionEntity entity = jobPositionMapper.selectById(id);
-        if (entity == null) {
-            throw new IllegalArgumentException("岗位不存在");
-        }
-        Long userId = SecurityUtils.getCurrentUserId();
-        if (userId != null && !userId.equals(entity.getUserId())) {
-            throw new IllegalArgumentException("岗位不存在或无权操作");
-        }
-        return entity;
+        return positionAccess.owned(id);
     }
 
     private void validatePosition(PositionRequest request) {
@@ -410,7 +402,7 @@ public class RecruitmentServiceImpl implements RecruitmentService {
         return PositionResponse.from(entity,
                 readSkills(entity.getRequiredSkills()),
                 readSkills(entity.getPreferredSkills()),
-                resumeCount, positionDepartments.view(entity));
+                resumeCount, positionDepartments.view(entity), positionAccess.manages(entity));
     }
 
     private List<String> readSkills(String json) {

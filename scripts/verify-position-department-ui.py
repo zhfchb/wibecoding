@@ -7,7 +7,7 @@ from playwright.sync_api import sync_playwright, expect
 
 BASE = os.environ.get('POSITION_UI_URL', 'http://127.0.0.1:5173')
 state = {'load_error': True, 'bind_error': True, 'empty': False, 'writes': []}
-position = {'id': 1, 'title': '历史招聘岗位', 'department': '历史事业部', 'status': 'OPEN',
+position = {'id': 1, 'canManage': True, 'title': '历史招聘岗位', 'department': '历史事业部', 'status': 'OPEN',
             'requiredSkills': ['Java'], 'preferredSkills': [], 'resumeCount': 0}
 
 

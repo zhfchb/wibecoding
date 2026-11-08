@@ -44,7 +44,7 @@ def route_api(route):
     elif path.endswith("/resumes"):
         data = [{"id": 10, "candidateName": "界面测试候选人", "skills": ["Java"], "parseStatus": "PARSED"}]
     elif path.endswith("/positions/1"):
-        data = {"id": 1, "title": "界面测试岗位", "status": "OPEN", "requiredSkills": ["Java"], "preferredSkills": []}
+        data = {"id": 1, "canManage": True, "title": "界面测试岗位", "status": "OPEN", "requiredSkills": ["Java"], "preferredSkills": []}
     else:
         raise AssertionError("Unexpected fixture request: " + method + " " + path)
     route.fulfill(status=202 if method == "POST" and path.endswith("/match/tasks") else 200,

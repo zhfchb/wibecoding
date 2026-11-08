@@ -46,7 +46,7 @@ def api(route):
     elif path.endswith("/resumes"):
         data = state["resumes"]
     elif path.endswith("/positions/1"):
-        data = {"id": 1, "title": "简历重试测试岗位", "status": "OPEN", "requiredSkills": ["Java"], "preferredSkills": []}
+        data = {"id": 1, "canManage": True, "title": "简历重试测试岗位", "status": "OPEN", "requiredSkills": ["Java"], "preferredSkills": []}
     else:
         raise AssertionError("Unexpected fixture request: " + method + " " + path)
     route.fulfill(status=202 if method == "POST" and path.endswith("/parse-tasks") else 200, json=data)

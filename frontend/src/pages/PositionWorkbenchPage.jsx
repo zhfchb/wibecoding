@@ -13,6 +13,7 @@ import remarkGfm from 'remark-gfm'
 import { recruitmentApi } from '../api'
 import PageIntro from '../components/PageIntro'
 import PositionDepartmentEditor from '../components/PositionDepartmentEditor'
+import PositionCollaborators from '../components/PositionCollaborators'
 import ResumeParseTaskPanel from '../components/ResumeParseTaskPanel'
 import useResumeParseTask from '../hooks/useResumeParseTask'
 import useMaterialTask from '../hooks/useMaterialTask'
@@ -42,7 +43,7 @@ const difficultyTag = (d) => ({
 }[d] || <Tag>{d}</Tag>)
 
 // ==================== 面试题抽屉 ====================
-function QuestionsDrawer({ open, onClose, resumeId, candidateName }) {
+function QuestionsDrawer({ open, onClose, resumeId, candidateName, canManage, onDenied }) {
   const [questions, setQuestions] = useState([])
   const [loading, setLoading] = useState(false)
   const [loadError, setLoadError] = useState('')
@@ -55,17 +56,18 @@ function QuestionsDrawer({ open, onClose, resumeId, candidateName }) {
       setQuestions(resp.data || [])
       setLoadError('')
     } catch (err) {
+      if ([403, 404].includes(err.response?.status)) { setQuestions([]); onDenied(); return }
       setLoadError('无法加载面试题，已有内容保留，请重新加载')
     } finally {
       setLoading(false)
     }
-  }, [resumeId])
+  }, [resumeId, onDenied])
 
   useEffect(() => {
     if (open) load()
   }, [open, load])
 
-  const generation = useMaterialTask(open, resumeId, 'QUESTIONS', load)
+  const generation = useMaterialTask(open && canManage, resumeId, 'QUESTIONS', load)
 
   return (
     <Drawer
@@ -74,7 +76,7 @@ function QuestionsDrawer({ open, onClose, resumeId, candidateName }) {
       onClose={onClose}
       width={640}
       extra={
-        <Button
+        canManage && <Button
           type="primary" icon={<ThunderboltOutlined />}
           loading={generation.loading || generation.submitting || generation.active} disabled={!!generation.error} onClick={generation.submit}
         >
@@ -82,11 +84,11 @@ function QuestionsDrawer({ open, onClose, resumeId, candidateName }) {
         </Button>
       }
     >
-      <MaterialTaskStatus state={generation} hasContent={questions.length > 0} />
+      {canManage && <MaterialTaskStatus state={generation} hasContent={questions.length > 0} />}
       {loadError && <Alert style={{ marginBottom: 16 }} type="warning" showIcon message={loadError} action={<Button size="small" onClick={load}>重新加载面试题</Button>} />}
       <Spin spinning={loading}>
         {questions.length === 0 && !loading && !loadError ? (
-          <Empty description="尚未生成面试题，点击右上角生成" />
+          <Empty description={canManage ? '尚未生成面试题，点击右上角生成' : '创建人尚未生成面试题'} />
         ) : (
           questions.map((q, i) => (
             <Card key={q.id} size="small" style={{ marginBottom: 12 }}
@@ -111,7 +113,7 @@ function QuestionsDrawer({ open, onClose, resumeId, candidateName }) {
 }
 
 // ==================== 评估报告抽屉 ====================
-function ReportDrawer({ open, onClose, resumeId, candidateName }) {
+function ReportDrawer({ open, onClose, resumeId, candidateName, canManage, onDenied }) {
   const [report, setReport] = useState(null)
   const [loading, setLoading] = useState(false)
   const [loadError, setLoadError] = useState('')
@@ -124,18 +126,19 @@ function ReportDrawer({ open, onClose, resumeId, candidateName }) {
       setReport(resp.data)
       setLoadError('')
     } catch (err) {
+      if ([403, 404].includes(err.response?.status)) { setReport(null); onDenied(); return }
       if (err.response?.status === 400) { setReport(null); setLoadError('') }
       else setLoadError('无法加载报告，已有内容保留，请重新加载')
     } finally {
       setLoading(false)
     }
-  }, [resumeId])
+  }, [resumeId, onDenied])
 
   useEffect(() => {
     if (open) load()
   }, [open, load])
 
-  const generation = useMaterialTask(open, resumeId, 'REPORT', load)
+  const generation = useMaterialTask(open && canManage, resumeId, 'REPORT', load)
 
   return (
     <Drawer
@@ -144,7 +147,7 @@ function ReportDrawer({ open, onClose, resumeId, candidateName }) {
       onClose={onClose}
       width={720}
       extra={
-        <Button
+        canManage && <Button
           type="primary" icon={<FileMarkdownOutlined />}
           loading={generation.loading || generation.submitting || generation.active} disabled={!!generation.error} onClick={generation.submit}
         >
@@ -152,11 +155,11 @@ function ReportDrawer({ open, onClose, resumeId, candidateName }) {
         </Button>
       }
     >
-      <MaterialTaskStatus state={generation} hasContent={!!report} />
+      {canManage && <MaterialTaskStatus state={generation} hasContent={!!report} />}
       {loadError && <Alert style={{ marginBottom: 16 }} type="warning" showIcon message={loadError} action={<Button size="small" onClick={load}>重新加载报告</Button>} />}
       <Spin spinning={loading}>
         {!report && !loading && !loadError ? (
-          <Empty description="尚未生成评估报告，点击右上角生成" />
+          <Empty description={canManage ? '尚未生成评估报告，点击右上角生成' : '创建人尚未生成评估报告'} />
         ) : report ? (
           <>
             <Descriptions bordered size="small" column={{ xs: 1, sm: 2 }} style={{ marginBottom: 16 }}>
@@ -201,6 +204,8 @@ export default function PositionWorkbenchPage() {
   const { id } = useParams()
   const navigate = useNavigate()
   const [position, setPosition] = useState(null)
+  const canManage = position?.canManage === true
+  const [accessDenied, setAccessDenied] = useState(false)
   const [resumes, setResumes] = useState([])
   const [selectedResumes, setSelectedResumes] = useState([])
   const [matches, setMatches] = useState([])
@@ -219,19 +224,25 @@ export default function PositionWorkbenchPage() {
   const [qDrawer, setQDrawer] = useState({ open: false, resumeId: null, name: null })
   const [rDrawer, setRDrawer] = useState({ open: false, resumeId: null, name: null })
 
+  const denyAccess = useCallback(() => {
+    setAccessDenied(true); setPosition(null); setResumes([]); setMatches([])
+    setQDrawer({ open: false }); setRDrawer({ open: false })
+  }, [])
+
   const loadResumes = useCallback(async () => {
     setLoadingResumes(true)
     try {
       const resp = await recruitmentApi.listResumes(id)
       setResumes(resp.data || [])
     } catch (err) {
+      if ([403, 404].includes(err.response?.status)) denyAccess()
       message.error('加载简历列表失败')
     } finally {
       setLoadingResumes(false)
     }
   }, [id])
 
-  const resumeParse = useResumeParseTask(id, loadResumes)
+  const resumeParse = useResumeParseTask(id, loadResumes, canManage)
   useEffect(() => { setSelectedResumes([]) }, [id])
   useEffect(() => {
     setSelectedResumes(ids => ids.filter(key => resumes.some(r => r.id === key && r.retryable)))
@@ -243,6 +254,7 @@ export default function PositionWorkbenchPage() {
       const resp = await recruitmentApi.listMatchResults(id)
       setMatches(resp.data || [])
     } catch (err) {
+      if ([403, 404].includes(err.response?.status)) denyAccess()
       if (err.response?.status !== 400) message.error('加载匹配结果失败')
       setMatches([])
     } finally {
@@ -251,15 +263,17 @@ export default function PositionWorkbenchPage() {
   }, [id])
 
   useEffect(() => {
+    setAccessDenied(false); setPosition(null)
     recruitmentApi.getPosition(id)
       .then((resp) => setPosition(resp.data))
-      .catch(() => message.error('加载岗位信息失败'))
+      .catch(() => { denyAccess(); message.error('加载岗位信息失败或没有访问权限') })
     loadResumes()
     loadMatches()
   }, [id, loadResumes, loadMatches])
 
   // The server is the source of truth; no localStorage task IDs or overlapping interval requests.
   useEffect(() => {
+    if (!canManage) { setMatchTask(null); setTaskLoading(false); setTaskError(''); return }
     let active = true
     let timer
     let lastTerminal = ''
@@ -289,7 +303,17 @@ export default function PositionWorkbenchPage() {
     }
     poll()
     return () => { active = false; clearTimeout(timer) }
-  }, [id, loadMatches, pollVersion])
+  }, [id, loadMatches, pollVersion, canManage])
+
+  // Recheck a read grant while the page remains open; never poll owner-only task APIs as a viewer.
+  useEffect(() => {
+    if (!position || canManage) return
+    let active = true
+    const timer = setInterval(() => recruitmentApi.getPosition(id).catch(err => {
+      if (active && [403, 404].includes(err.response?.status)) denyAccess()
+    }), 10000)
+    return () => { active = false; clearInterval(timer) }
+  }, [id, !!position, canManage, denyAccess])
 
   const handleUpload = async ({ file, onSuccess, onError }) => {
     setUploading(true)
@@ -384,16 +408,16 @@ export default function PositionWorkbenchPage() {
       title: '操作', key: 'action', width: 260,
       render: (_, record) => (
         <Space>
-          {record.retryable && <Button type="link" size="small" disabled={resumeParse.busy || position?.status === 'CLOSED'} onClick={() => resumeParse.submit([record.id])}>重新解析</Button>}
+          {canManage && record.retryable && <Button type="link" size="small" disabled={resumeParse.busy || position?.status === 'CLOSED'} onClick={() => resumeParse.submit([record.id])}>重新解析</Button>}
           <Button type="link" size="small" onClick={() => setQDrawer({ open: true, resumeId: record.id, name: record.candidateName })}>
             面试题
           </Button>
           <Button type="link" size="small" onClick={() => setRDrawer({ open: true, resumeId: record.id, name: record.candidateName })}>
             评估报告
           </Button>
-          <Popconfirm title="删除此简历？" description="将连带删除向量数据与匹配结果" onConfirm={() => handleDeleteResume(record.id)}>
+          {canManage && <Popconfirm title="删除此简历？" description="将连带删除向量数据与匹配结果" onConfirm={() => handleDeleteResume(record.id)}>
             <Button type="link" size="small" danger icon={<DeleteOutlined />} />
-          </Popconfirm>
+          </Popconfirm>}
         </Space>
       ),
     },
@@ -436,7 +460,7 @@ export default function PositionWorkbenchPage() {
       title: '操作', key: 'action', width: 230,
       render: (_, record) => (
         <Space>
-          {record.hrDecision === 'PENDING' && (
+          {canManage && record.hrDecision === 'PENDING' && (
             <>
               <Popconfirm title="通过该候选人？" description="通过后可生成面试题与评估报告" onConfirm={() => handleDecide(record.id, true)}>
                 <Button type="primary" size="small" icon={<CheckOutlined />}>通过</Button>
@@ -457,9 +481,12 @@ export default function PositionWorkbenchPage() {
     },
   ]
 
+  if (accessDenied) return <Alert type="warning" showIcon message="岗位不可访问或授权已撤销" description="请联系岗位创建人确认授权。" action={<Button onClick={() => navigate('/recruitment')}>返回岗位列表</Button>} />
+
   return (
     <div>
-      <PageIntro eyebrow="CANDIDATE WORKSPACE" title={position?.title || '岗位候选人工作台'}>先上传简历，再查看匹配依据并进行人工筛选；通过初筛后，为候选人准备面试题与评估报告。</PageIntro>
+      {position && !canManage && <Alert style={{ marginBottom: 16 }} type="info" showIcon message="只读协作岗位" description="你可以查看候选人与已有评估资料。上传、删除、筛选决策、部门修改及AI任务由创建人操作。" />}
+      <PageIntro eyebrow="CANDIDATE WORKSPACE" title={position?.title || '岗位候选人工作台'}>{canManage ? '先上传简历，再查看匹配依据并进行人工筛选；通过初筛后，为候选人准备面试题与评估报告。' : '查看创建人分享的候选人与已有评估资料，辅助招聘讨论；资料维护和流程操作由创建人负责。'}</PageIntro>
       <div className="workflow-guide workbench-guide">
         {[[resumes.length > 0, '01', '上传简历', `${resumes.length} 份已收录`], [matches.length > 0, '02', '查看匹配', `${matches.length} 位已评分`], [matches.some(m => m.hrDecision === 'APPROVED'), '03', '准备面试', '人工通过后生成面试资料']].map(([done, n, title, hint]) => <div key={n}><span className={`step-number ${done ? 'step-done' : ''}`}>{done ? <CheckOutlined /> : n}</span><div><strong>{title}</strong><p>{hint}</p></div></div>)}
       </div>
@@ -472,7 +499,8 @@ export default function PositionWorkbenchPage() {
           </Space>
         }
         extra={
-          <Space>
+          canManage && <Space wrap>
+            <PositionCollaborators key={id} positionId={id} />
             <Upload accept=".pdf,.txt,.md,.markdown" multiple showUploadList={false} customRequest={handleUpload}>
               <Button icon={<UploadOutlined />} loading={uploading}>
                 {uploading ? '解析中…' : '上传简历'}
@@ -502,7 +530,7 @@ export default function PositionWorkbenchPage() {
           </Popconfirm> : null} />}
         {position && (
           <Descriptions bordered size="small" column={{ xs: 1, sm: 2, lg: 4 }} style={{ marginBottom: 16 }}>
-            <Descriptions.Item label="部门"><PositionDepartmentEditor position={position} onUpdated={setPosition} /></Descriptions.Item>
+            <Descriptions.Item label="部门">{canManage ? <PositionDepartmentEditor position={position} onUpdated={setPosition} /> : position.department || '未指定部门'}</Descriptions.Item>
             <Descriptions.Item label="城市">{position.city || '-'}</Descriptions.Item>
             <Descriptions.Item label="薪资">{position.salaryMin ?? '-'}~{position.salaryMax ?? '-'}k</Descriptions.Item>
             <Descriptions.Item label="最低年限">{position.minYears ?? '-'} 年 / {position.education || '学历不限'}</Descriptions.Item>
@@ -522,7 +550,7 @@ export default function PositionWorkbenchPage() {
           extra={<Button icon={<ReloadOutlined />} onClick={loadMatches} loading={loadingMatches} size="small">刷新</Button>}
         >
           {matches.length === 0 && !loadingMatches ? (
-            <Empty description={resumes.some(r => r.parseStatus === 'PARSED') ? '简历已就绪。点击「执行人岗匹配」，查看技能命中、待核实项与评分依据。' : '请先上传简历；成功解析后，即可执行人岗匹配。'} />
+            <Empty description={!canManage ? '创建人尚未完成人岗匹配。' : resumes.some(r => r.parseStatus === 'PARSED') ? '简历已就绪。点击「执行人岗匹配」，查看技能命中、待核实项与评分依据。' : '请先上传简历；成功解析后，即可执行人岗匹配。'} />
           ) : (
             <Table columns={matchColumns} dataSource={matches} rowKey="id"
               loading={loadingMatches} pagination={false} scroll={{ x: 1100 }} size="middle" />
@@ -534,21 +562,25 @@ export default function PositionWorkbenchPage() {
           title={`简历库（${resumes.length}）`}
           extra={<Button icon={<ReloadOutlined />} onClick={loadResumes} loading={loadingResumes} size="small">刷新</Button>}
         >
-          <ResumeParseTaskPanel state={resumeParse} selectedIds={selectedResumes} onSubmitted={() => setSelectedResumes([])} closed={position?.status === 'CLOSED'} />
+          {canManage && <ResumeParseTaskPanel state={resumeParse} selectedIds={selectedResumes} onSubmitted={() => setSelectedResumes([])} closed={position?.status === 'CLOSED'} />}
           <Table columns={resumeColumns} dataSource={resumes} rowKey="id"
-            rowSelection={{ selectedRowKeys: selectedResumes, onChange: setSelectedResumes,
-              getCheckboxProps: r => ({ disabled: !r.retryable || resumeParse.busy || position?.status === 'CLOSED' }) }}
-            loading={loadingResumes} pagination={false} scroll={{ x: 1000 }} size="middle" locale={{ emptyText: '还没有候选人。点击上方「上传简历」，把人选整理到这个岗位。' }} />
+            rowSelection={canManage ? { selectedRowKeys: selectedResumes, onChange: setSelectedResumes,
+              getCheckboxProps: r => ({ disabled: !r.retryable || resumeParse.busy || position?.status === 'CLOSED' }) } : undefined}
+            loading={loadingResumes} pagination={false} scroll={{ x: 1000 }} size="middle" locale={{ emptyText: canManage ? '还没有候选人。点击上方「上传简历」，把人选整理到这个岗位。' : '创建人尚未上传候选人。' }} />
         </Card>
       </Card>
 
       <QuestionsDrawer key={qDrawer.resumeId || "questions"}
+        onDenied={denyAccess}
+        canManage={canManage}
         open={qDrawer.open}
         onClose={() => setQDrawer({ ...qDrawer, open: false })}
         resumeId={qDrawer.resumeId}
         candidateName={qDrawer.name}
       />
       <ReportDrawer key={rDrawer.resumeId || "report"}
+        onDenied={denyAccess}
+        canManage={canManage}
         open={rDrawer.open}
         onClose={() => setRDrawer({ ...rDrawer, open: false })}
         resumeId={rDrawer.resumeId}

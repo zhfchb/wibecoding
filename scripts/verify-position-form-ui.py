@@ -19,7 +19,7 @@ def api(route):
             route.fulfill(json=[{'id': 7, 'name': '正式研发部', 'status': 'ACTIVE'}])
             return
         assert path.endswith("/positions"), path
-        route.fulfill(json=[{"id": 1, "title": "界面测试岗位", "department": "既有事业部", "city": "宁波",
+        route.fulfill(json=[{"id": 1, "canManage": True, "title": "界面测试岗位", "department": "既有事业部", "city": "宁波",
                              "status": "OPEN", "requiredSkills": ["Java"], "resumeCount": 0}])
 
 

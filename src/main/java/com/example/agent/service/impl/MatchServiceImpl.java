@@ -6,9 +6,7 @@ import com.example.agent.entity.CandidateResumeEntity;
 import com.example.agent.entity.JobPositionEntity;
 import com.example.agent.entity.MatchResultEntity;
 import com.example.agent.mapper.CandidateResumeMapper;
-import com.example.agent.mapper.JobPositionMapper;
 import com.example.agent.mapper.MatchResultMapper;
-import com.example.agent.security.SecurityUtils;
 import com.example.agent.service.AiGateway;
 import com.example.agent.service.MatchService;
 import com.example.agent.service.matching.MatchInputReader;
@@ -53,7 +51,6 @@ public class MatchServiceImpl implements MatchService {
     /** 一次 LLM 批量评分最多处理的候选人数量（防 prompt 过长） */
     private static final int LLM_BATCH_SIZE = 20;
 
-    private final JobPositionMapper jobPositionMapper;
     private final CandidateResumeMapper candidateResumeMapper;
     private final MatchResultMapper matchResultMapper;
     private final AiGateway aiGateway;
@@ -61,6 +58,7 @@ public class MatchServiceImpl implements MatchService {
     private final MatchResultWriter resultWriter;
     private final MatchInputReader inputReader;
     private final MatchTaskStore taskStore;
+    private final com.example.agent.service.company.PositionAccess positionAccess;
 
     @Override
     public void runTask(MatchTaskStore.Task task) {
@@ -150,7 +148,7 @@ public class MatchServiceImpl implements MatchService {
 
     @Override
     public List<MatchResultResponse> listMatches(Long positionId) {
-        requireOwnedPosition(positionId);
+        positionAccess.readable(positionId);
         List<MatchResultEntity> results = matchResultMapper.selectList(
                 new LambdaQueryWrapper<MatchResultEntity>()
                         .eq(MatchResultEntity::getPositionId, positionId)
@@ -437,18 +435,7 @@ public class MatchServiceImpl implements MatchService {
     }
 
     private JobPositionEntity requireOwnedPosition(Long id) {
-        if (id == null) {
-            throw new IllegalArgumentException("岗位 ID 不能为空");
-        }
-        JobPositionEntity entity = jobPositionMapper.selectById(id);
-        if (entity == null) {
-            throw new IllegalArgumentException("岗位不存在");
-        }
-        Long userId = SecurityUtils.getCurrentUserId();
-        if (userId != null && !userId.equals(entity.getUserId())) {
-            throw new IllegalArgumentException("岗位不存在或无权操作");
-        }
-        return entity;
+        return positionAccess.owned(id);
     }
 
     private List<String> mergeDistinct(List<String> a, List<String> b) {

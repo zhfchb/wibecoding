@@ -4,7 +4,7 @@ import { recruitmentApi } from '../api'
 
 const active = task => ['QUEUED', 'RUNNING'].includes(task?.status)
 
-export default function useResumeParseTask(positionId, onUpdated) {
+export default function useResumeParseTask(positionId, onUpdated, enabled = true) {
   const [task, setTask] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -16,6 +16,7 @@ export default function useResumeParseTask(positionId, onUpdated) {
   currentPosition.current = positionId
 
   useEffect(() => {
+    if (!enabled) { setTask(null); setLoading(false); setError(''); return }
     let mounted = true
     let timer
     let signature = ''
@@ -39,9 +40,10 @@ export default function useResumeParseTask(positionId, onUpdated) {
     }
     poll()
     return () => { mounted = false; clearTimeout(timer) }
-  }, [positionId, onUpdated, refresh])
+  }, [positionId, onUpdated, refresh, enabled])
 
   const submit = useCallback(async ids => {
+    if (!enabled) return false
     if (loading || error || active(task) || submittingRef.current || ids.length === 0 || ids.length > 20) return false
     const sorted = [...ids].sort((a, b) => a - b)
     if (pending.current && JSON.stringify(pending.current.ids) !== JSON.stringify(sorted)) {
@@ -68,9 +70,10 @@ export default function useResumeParseTask(positionId, onUpdated) {
       }
       return false
     } finally { submittingRef.current = false; setSubmitting(false) }
-  }, [positionId, loading, error, task, onUpdated])
+  }, [positionId, loading, error, task, onUpdated, enabled])
 
   const cancel = async () => {
+    if (!enabled) return
     try {
       const { data } = await recruitmentApi.cancelResumeParseTask(task.id)
       if (currentPosition.current !== positionId) return

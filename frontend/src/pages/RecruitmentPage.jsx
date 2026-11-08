@@ -270,19 +270,20 @@ export default function RecruitmentPage() {
           <Button type="link" size="small" onClick={() => navigate(`/recruitment/positions/${record.id}`)}>
             查看候选人
           </Button>
-          {record.status === 'OPEN' && (
+          {!record.canManage && <Tag>只读协作</Tag>}
+          {record.canManage && record.status === 'OPEN' && (
             <Popconfirm title="关闭此岗位？" description="关闭后不再参与匹配，数据保留" onConfirm={() => handleClose(record.id)}>
               <Button type="link" size="small">关闭</Button>
             </Popconfirm>
           )}
-          <Popconfirm
+          {record.canManage && <Popconfirm
             title="删除此岗位？"
             description="将连带删除岗位下全部简历、向量、匹配结果、面试题与报告，不可恢复"
             onConfirm={() => handleDelete(record.id)}
             okText="删除" cancelText="取消" okButtonProps={{ danger: true }}
           >
             <Button type="link" size="small" danger icon={<DeleteOutlined />} aria-label={`删除岗位 ${record.title}`} />
-          </Popconfirm>
+          </Popconfirm>}
         </Space>
       ),
     },
@@ -306,7 +307,7 @@ export default function RecruitmentPage() {
       {loadError && <Alert type="error" showIcon message="暂时无法加载岗位，请检查服务后重试。" action={<Button size="small" onClick={loadPositions}>重试</Button>} style={{ marginBottom: 16 }} />}
       <Card
         className="positions-panel"
-        title={<span>我的招聘岗位 <span className="count-badge">{loadError ? '—' : positions.length}</span></span>}
+        title={<span>可访问的招聘岗位 <span className="count-badge">{loadError ? '—' : positions.length}</span></span>}
         extra={
           <Space>
             <Button icon={<UploadOutlined />} onClick={() => setImportOpen(true)}>导入 JD</Button>

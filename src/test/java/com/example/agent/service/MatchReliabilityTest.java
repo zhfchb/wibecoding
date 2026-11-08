@@ -34,6 +34,9 @@ class MatchReliabilityTest {
 
     @BeforeEach
     void prepare() {
+        var identity=new org.springframework.security.authentication.UsernamePasswordAuthenticationToken("fixture",null,List.of());
+        identity.setDetails(java.util.Map.of("userId",987L));
+        org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(identity);
         position = new JobPositionEntity();
         position.setUserId(987L);
         position.setTitle("匹配可靠性测试");
@@ -47,6 +50,9 @@ class MatchReliabilityTest {
         resume.setParseStatus("PARSED");
         resumes.insert(resume);
     }
+
+    @org.junit.jupiter.api.AfterEach
+    void clearIdentity() { org.springframework.security.core.context.SecurityContextHolder.clearContext(); }
 
     @Test
     void modelRunsOutsideTransactionAndRematchPreservesDecisionAndId() {

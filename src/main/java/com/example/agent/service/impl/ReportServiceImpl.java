@@ -9,8 +9,6 @@ import com.example.agent.entity.JobPositionEntity;
 import com.example.agent.entity.MatchResultEntity;
 import com.example.agent.mapper.CandidateReportMapper;
 import com.example.agent.mapper.CandidateResumeMapper;
-import com.example.agent.mapper.JobPositionMapper;
-import com.example.agent.security.SecurityUtils;
 import com.example.agent.service.AiGateway;
 import com.example.agent.service.ReportService;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -35,6 +33,7 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 public class ReportServiceImpl implements ReportService {
+    private final com.example.agent.service.company.PositionAccess positionAccess;
 
     /** 送入 LLM 的简历原文最大长度 */
     private static final int MAX_RESUME_TEXT = 3000;
@@ -42,7 +41,6 @@ public class ReportServiceImpl implements ReportService {
     /** 市场行情引用最多保留条数 */
     private static final int MAX_MARKET_REFS = 5;
 
-    private final JobPositionMapper jobPositionMapper;
     private final CandidateResumeMapper candidateResumeMapper;
     private final CandidateReportMapper candidateReportMapper;
     private final AiGateway aiGateway;
@@ -69,7 +67,7 @@ public class ReportServiceImpl implements ReportService {
 
     @Override
     public CandidateReportResponse getReport(Long resumeId) {
-        CandidateResumeEntity resume = requireOwnedResume(resumeId);
+        CandidateResumeEntity resume = positionAccess.resume(resumeId);
         CandidateReportEntity report = candidateReportMapper.selectOne(
                 new LambdaQueryWrapper<CandidateReportEntity>()
                         .eq(CandidateReportEntity::getResumeId, resumeId)
@@ -83,7 +81,7 @@ public class ReportServiceImpl implements ReportService {
 
     @Override
     public List<CandidateReportResponse> listReports(Long positionId) {
-        requireOwnedPosition(positionId);
+        positionAccess.readable(positionId);
         List<CandidateReportEntity> reports = candidateReportMapper.selectList(
                 new LambdaQueryWrapper<CandidateReportEntity>()
                         .eq(CandidateReportEntity::getPositionId, positionId));
@@ -251,27 +249,4 @@ public class ReportServiceImpl implements ReportService {
         return StringUtils.hasText(value) ? value.trim() : null;
     }
 
-    private CandidateResumeEntity requireOwnedResume(Long resumeId) {
-        if (resumeId == null) {
-            throw new IllegalArgumentException("简历 ID 不能为空");
-        }
-        CandidateResumeEntity resume = candidateResumeMapper.selectById(resumeId);
-        if (resume == null) {
-            throw new IllegalArgumentException("简历不存在");
-        }
-        requireOwnedPosition(resume.getPositionId());
-        return resume;
-    }
-
-    private JobPositionEntity requireOwnedPosition(Long positionId) {
-        JobPositionEntity position = jobPositionMapper.selectById(positionId);
-        if (position == null) {
-            throw new IllegalArgumentException("岗位不存在");
-        }
-        Long userId = SecurityUtils.getCurrentUserId();
-        if (userId != null && !userId.equals(position.getUserId())) {
-            throw new IllegalArgumentException("岗位不存在或无权操作");
-        }
-        return position;
-    }
 }
