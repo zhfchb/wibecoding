@@ -86,6 +86,8 @@ mvn test '-Dtest=PythonAiE2ETest'
 
 ## 文档
 
+- [公司资料完善](docs/acceptance/COMPANY_PROFILE.md)：省市联动、必填与选填资料；已有库需执行 `deploy/migrations/20261108_company_profile.sql`。
+
 - [公司管理分阶段计划](docs/development/公司管理分阶段计划.md)：第一阶段公司与成员基础已实现，已有数据库需执行 `deploy/migrations/20261108_company_foundation.sql`；部门和协作后续分阶段提交。
 
 - [文档导航](docs/README.md)：产品、开发、验收与历史资料。

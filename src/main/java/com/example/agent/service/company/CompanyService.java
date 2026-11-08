@@ -19,8 +19,13 @@ public class CompanyService {
     private final JdbcTemplate db;
     private final UserMapper users;
     private final PasswordEncoder passwords;
-    public record Company(Long id,String name,String city,String description,String memberRole) {}
-    public record Update(String name,String city,String description) {}
+    private final CompanyProfileCatalog catalog;
+    private final com.fasterxml.jackson.databind.ObjectMapper json;
+    public record Company(Long id,String name,String city,String description,String memberRole,java.util.Map<String,String> profile,boolean needsCompletion) {}
+    public record Update(String name,String city,String description,java.util.Map<String,String> profile) {
+        public Update(String name,String city,String description) { this(name,city,description,null); }
+    }
+    public java.util.Map<String,Object> options() { return catalog.options(); }
     public record Member(Long userId,String username,String role) {}
     public record NewMember(String username,String password) {}
 
@@ -37,15 +42,29 @@ public class CompanyService {
             db.update("INSERT INTO recruitment_company_member (user_id,company_id,role) VALUES (?,?,'ADMIN')",id,id);
         }
         return db.queryForObject("SELECT c.*,m.role FROM recruitment_company c JOIN recruitment_company_member m ON c.id=m.company_id WHERE m.user_id=?",
-                (r,n)->new Company(r.getLong("id"),r.getString("name"),r.getString("city"),r.getString("description"),r.getString("role")),id);
+                (r,n)->{
+                    java.util.Map<String,String> profile;
+                    try { profile=r.getString("profile_json")==null ? java.util.Map.of() : json.readValue(r.getString("profile_json"),new com.fasterxml.jackson.core.type.TypeReference<java.util.Map<String,String>>(){}); }
+                    catch (Exception e) { profile=java.util.Map.of(); }
+                    boolean incomplete=false;
+                    try { catalog.validate(profile); } catch (IllegalArgumentException e) { incomplete=true; }
+                    String description=r.getString("description");
+                    return new Company(r.getLong("id"),r.getString("name"),r.getString("city"),description,r.getString("role"),profile,
+                        incomplete || description==null || description.isBlank());
+                },id);
     }
     @Transactional
     public Company update(Update input) {
         var company=current();admin(company);
         if (input==null || input.name()==null || input.name().isBlank() || input.name().trim().length()>100
-                || (input.city()!=null && input.city().length()>50) || (input.description()!=null && input.description().length()>5000))
-            throw new IllegalArgumentException("公司名称必填且最多100字，城市最多50字，简介最多5000字");
-        db.update("UPDATE recruitment_company SET name=?,city=?,description=? WHERE id=?",input.name().trim(),input.city(),input.description(),company.id());
+                || input.description()==null || input.description().isBlank() || input.description().length()>5000)
+            throw new IllegalArgumentException("公司全称和简介必填，公司全称最多100字，简介最多5000字");
+        var profile=catalog.validate(input.profile());
+        String city=profile.get("cityName");
+        String stored;
+        try { stored=json.writeValueAsString(profile); }
+        catch (Exception e) { throw new IllegalArgumentException("公司资料格式不正确"); }
+        db.update("UPDATE recruitment_company SET name=?,city=?,description=?,profile_json=? WHERE id=?",input.name().trim(),city,input.description().trim(),stored,company.id());
         return current();
     }
     @Transactional

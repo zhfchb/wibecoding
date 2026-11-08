@@ -10,6 +10,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class CompanyController {
     private final CompanyService companies;
+    @GetMapping("/options") public java.util.Map<String,Object> options() { return companies.options(); }
     @GetMapping public CompanyService.Company current() { return companies.current(); }
     @PutMapping public CompanyService.Company update(@RequestBody CompanyService.Update request) { return companies.update(request); }
     @GetMapping("/members") public List<CompanyService.Member> members() { return companies.members(); }

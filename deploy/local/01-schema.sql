@@ -280,6 +280,7 @@ CREATE TABLE IF NOT EXISTS recruitment_material_request (
 
 CREATE TABLE IF NOT EXISTS recruitment_company (
     id BIGINT PRIMARY KEY,
+    profile_json TEXT,
     name VARCHAR(100) NOT NULL,
     city VARCHAR(50),
     description TEXT,
