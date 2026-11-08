@@ -13,6 +13,8 @@ state = {'assignment': None, 'manager_error': True, 'writes': [], 'interviewer_r
 def handler(owner):
     def api(route):
         path = urlparse(route.request.url).path
+        if path.endswith('/progress'):
+            route.fulfill(json=[]); return
         method = route.request.method
         if not owner:
             state['interviewer_requests'].append(path)

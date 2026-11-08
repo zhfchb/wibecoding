@@ -11,6 +11,8 @@ state = {'owner': True, 'grants': [], 'load_error': True, 'granted': True, 'requ
 
 def api(route):
     path = urlparse(route.request.url).path
+    if path.endswith('/progress'):
+        route.fulfill(json=[]); return
     method = route.request.method
     state['requests'].append((method, path, state['owner']))
     job = {'id': 1, 'title': '协作验收岗位', 'department': '研发部', 'status': 'OPEN', 'requiredSkills': ['Java'],

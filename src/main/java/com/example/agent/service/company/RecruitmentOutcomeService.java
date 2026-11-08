@@ -20,6 +20,23 @@ public class RecruitmentOutcomeService {
     public record State(int version,String outcome,boolean archived,String reason,Long actorId,LocalDateTime updatedAt) {}
     public record Input(Integer version,String action,String outcome,String reason) {}
     public record Event(int version,String action,String outcome,boolean archived,String reason,Long actorId,String username,LocalDateTime changedAt) {}
+    public record Progress(Long id,String candidateName,String fileName,String outcome,boolean archived,int submittedEvaluations) {}
+    public List<Progress> progress(Long positionId) {
+        var position=access.readable(positionId);
+        // One snapshot, one candidate per row; drafts and revoked assignments are excluded.
+        return db.query("""
+            SELECT r.id,r.candidate_name,
+                   (SELECT MIN(d.file_name) FROM document d WHERE d.document_id=r.doc_id AND d.user_id=r.user_id AND d.deleted=0) AS file_name,
+                   COALESCE(o.outcome,'PENDING') AS outcome,
+                   COALESCE(o.archived,FALSE) AS archived,
+                   (SELECT COUNT(*) FROM recruitment_interview_assignment a
+                    JOIN recruitment_interview_evaluation e ON e.assignment_id=a.id
+                    WHERE a.resume_id=r.id AND a.position_id=r.position_id
+                      AND a.status='SUBMITTED' AND e.submitted_at IS NOT NULL) AS submitted_evaluations
+            FROM candidate_resume r LEFT JOIN recruitment_candidate_outcome o ON o.resume_id=r.id
+            WHERE r.position_id=? AND r.user_id=? ORDER BY r.id DESC
+            """,(r,n)->new Progress(r.getLong("id"),r.getString("candidate_name"),r.getString("file_name"),r.getString("outcome"),r.getBoolean("archived"),r.getInt("submitted_evaluations")),positionId,position.getUserId());
+    }
     private State current(Long resumeId,boolean lock) {
         var rows=db.query("SELECT * FROM recruitment_candidate_outcome WHERE resume_id=?"+(lock?" FOR UPDATE":""),
             (r,n)->new State(r.getInt("version"),r.getString("outcome"),r.getBoolean("archived"),r.getString("reason"),r.getLong("actor_id"),r.getObject("updated_at",LocalDateTime.class)),resumeId);

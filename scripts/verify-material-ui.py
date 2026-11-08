@@ -15,6 +15,8 @@ state = {"tasks": {}, "requests": [], "uncertain": True, "poll_error": False, "a
 
 def api(route):
     path = urlparse(route.request.url).path
+    if path.endswith('/progress'):
+        route.fulfill(json=[]); return
     method = route.request.method
     material = re.search(r"/resumes/(\d+)/materials/(QUESTIONS|REPORT)/tasks(/latest)?$", path)
     if material:

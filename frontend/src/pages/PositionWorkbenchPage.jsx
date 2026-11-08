@@ -17,6 +17,7 @@ import PositionCollaborators from '../components/PositionCollaborators'
 import PositionActivity from '../components/PositionActivity'
 import CandidateInterviews from '../components/CandidateInterviews'
 import CandidateOutcome from '../components/CandidateOutcome'
+import RecruitmentProgress from '../components/RecruitmentProgress'
 import ResumeParseTaskPanel from '../components/ResumeParseTaskPanel'
 import useResumeParseTask from '../hooks/useResumeParseTask'
 import useMaterialTask from '../hooks/useMaterialTask'
@@ -414,7 +415,7 @@ export default function PositionWorkbenchPage() {
         <Space>
           {canOperate && record.retryable && <Button type="link" size="small" disabled={resumeParse.busy || position?.status === 'CLOSED'} onClick={() => resumeParse.submit([record.id])}>重新解析</Button>}
           {canOperate && <CandidateInterviews positionId={id} resume={record} />}
-          <CandidateOutcome resume={record} canOperate={canOperate} />
+          <CandidateOutcome resume={record} canOperate={canOperate} onChanged={loadResumes} />
           <Button type="link" size="small" onClick={() => setQDrawer({ open: true, resumeId: record.id, name: record.candidateName })}>
             面试题
           </Button>
@@ -565,6 +566,7 @@ export default function PositionWorkbenchPage() {
           )}
         </Card>
 
+        <RecruitmentProgress key={id} positionId={id} canOperate={canOperate} revision={resumes} />
         <Card
           type="inner"
           title={`简历库（${resumes.length}）`}

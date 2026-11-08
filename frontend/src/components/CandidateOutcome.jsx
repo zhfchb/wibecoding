@@ -4,7 +4,7 @@ import api from '../api'
 
 const outcomes = { PENDING: '待定', HIRED: '录用', REJECTED: '淘汰', WITHDRAWN: '候选人退出' }
 const actions = { DECIDE: '修改结果', ARCHIVE: '归档', REOPEN: '重新开启' }
-export default function CandidateOutcome({ resume, canOperate }) {
+export default function CandidateOutcome({ resume, canOperate, onChanged }) {
   const [open, setOpen] = useState(false)
   const [state, setState] = useState(null)
   const [history, setHistory] = useState([])
@@ -25,7 +25,7 @@ export default function CandidateOutcome({ resume, canOperate }) {
     setBusy(true)
     try {
       await api.post(`/recruitment/resumes/${resume.id}/outcome`, { version: state.version, action, outcome, reason })
-      message.success('招聘结果已保存'); await load()
+      message.success('招聘结果已保存'); await load(); onChanged?.()
     } catch (e) {
       if (e.response?.status === 409 || !e.response || e.response.status >= 500) setStale(true)
       message.error(e.response?.data?.message || '保存结果未确认，请刷新后核对')

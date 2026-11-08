@@ -14,6 +14,8 @@ state = {"task": None, "requests": [], "submit_error": True, "poll_error": False
 
 def api(route):
     path = urlparse(route.request.url).path
+    if path.endswith('/progress'):
+        route.fulfill(json=[]); return
     method = route.request.method
     if path.endswith("/resumes/parse-tasks/latest"):
         if state["poll_error"]:

@@ -17,6 +17,8 @@ def task(kind, actor=2):
 
 def api(route):
     path = urlparse(route.request.url).path
+    if path.endswith('/progress'):
+        route.fulfill(json=[]); return
     method = route.request.method
     if method != 'GET':
         state['writes'].append((method, path, route.request.post_data_json if method in ('POST', 'PUT') else None))

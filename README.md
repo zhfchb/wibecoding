@@ -90,6 +90,8 @@ mvn test '-Dtest=PythonAiE2ETest'
 
 ## 文档
 
+- [招聘进度总览](docs/acceptance/RECRUITMENT_PROGRESS.md)：当前岗位结果分布、归档统计、搜索及待决定候选人筛选。
+
 - [招聘结果与归档](docs/acceptance/CANDIDATE_OUTCOMES.md)：人工结果、原因、归档与重新开启、版本历史。
 
 - [面试排期与流程状态](docs/acceptance/INTERVIEW_SCHEDULING.md)：时区、冲突校验、改期取消、完成状态及历史；不发送外部通知。

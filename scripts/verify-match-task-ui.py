@@ -18,6 +18,8 @@ state = {"task": None, "keys": [], "results": [], "poll_error": False, "submit_e
 
 def route_api(route):
     path = urlparse(route.request.url).path
+    if path.endswith('/progress'):
+        route.fulfill(json=[]); return
     method = route.request.method
     if path.endswith("/resumes/parse-tasks/latest"):
         data = None

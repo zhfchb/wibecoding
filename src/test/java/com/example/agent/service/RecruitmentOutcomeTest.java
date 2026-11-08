@@ -43,6 +43,37 @@ class RecruitmentOutcomeTest {
         grants.grant(job,editor,"EDITOR");grants.grant(job,viewer);
     }
     @AfterEach void clear(){SecurityContextHolder.clearContext();}
+    @Test void progressIncludesDefaultsAndOnlyThisOwnersPositionRecords() {
+        assertThat(outcomes.progress(job)).hasSize(1);
+        assertThat(outcomes.progress(job).get(0).outcome()).isEqualTo("PENDING");
+        db.update("INSERT INTO candidate_resume(position_id,user_id,candidate_name,parse_status) VALUES (?,?,'错误归属','PARSED')",job,outsider);
+        assertThat(outcomes.progress(job)).hasSize(1);
+        change(0,"DECIDE","HIRED","已复核");change(1,"ARCHIVE",null,"归档");
+        var row=outcomes.progress(job).get(0);assertThat(row.outcome()).isEqualTo("HIRED");assertThat(row.archived()).isTrue();
+    }
+    @Test void progressCountsOnlySubmittedEvaluationsWithoutDuplicatingCandidate() {
+        for(String status:List.of("ASSIGNED","DRAFT","SUBMITTED","SUBMITTED","REVOKED")) {
+            db.update("INSERT INTO recruitment_interview_assignment(position_id,resume_id,interviewer_id,assigned_by,status,version,created_at,updated_at) VALUES (?,?,?,?,?,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)",job,resume,interviewer,owner,status);
+            long id=db.queryForObject("SELECT MAX(id) FROM recruitment_interview_assignment WHERE resume_id=?",Long.class,resume);
+            db.update("INSERT INTO recruitment_interview_evaluation(assignment_id,summary,submitted_at) VALUES (?,? ,?)",id,"private draft or submitted",List.of("SUBMITTED","REVOKED").contains(status)?java.time.LocalDateTime.now():null);
+        }
+        var rows=outcomes.progress(job);assertThat(rows).hasSize(1);assertThat(rows.get(0).submittedEvaluations()).isEqualTo(2);
+    }
+    @Test void progressHonorsReadGrantsAndRevocation() {
+        login(editor);assertThat(outcomes.progress(job)).hasSize(1);
+        login(viewer);assertThat(outcomes.progress(job)).hasSize(1);
+        login(owner);db.update("DELETE FROM recruitment_position_viewer WHERE position_id=?",job);
+        for(long user:List.of(viewer,editor,interviewer,outsider)) {
+            login(user);assertThatThrownBy(()->outcomes.progress(job)).isInstanceOf(ResponseStatusException.class);
+        }
+    }
+    @Test void progressDocumentNameDoesNotLeakOtherOwnersOrDuplicateCandidates() {
+        String documentId="progress_"+UUID.randomUUID();
+        db.update("UPDATE candidate_resume SET doc_id=? WHERE id=?",documentId,resume);
+        for(long actor:List.of(owner,owner,outsider)) db.update("INSERT INTO document(document_id,file_name,chunk_count,file_size,user_id) VALUES (?,?,0,0,?)",documentId,actor==owner?"own.md":"private.md",actor);
+        assertThat(outcomes.progress(job)).hasSize(1);
+        assertThat(outcomes.progress(job).get(0).fileName()).isEqualTo("own.md");
+    }
     RecruitmentOutcomeService.State change(int version,String action,String outcome,String reason) {return outcomes.change(resume,new RecruitmentOutcomeService.Input(version,action,outcome,reason));}
     @Test void defaultsWithoutBackfillAndKeepsScreeningIndependent() {
         assertThat(outcomes.get(resume).outcome()).isEqualTo("PENDING");assertThat(outcomes.history(resume)).isEmpty();

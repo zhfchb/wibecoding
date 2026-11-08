@@ -42,6 +42,8 @@ def event():
 def handler(owner):
     def api(route):
         path = urlparse(route.request.url).path
+        if path.endswith('/progress'):
+            route.fulfill(json=[]); return
         method = route.request.method
         if method != 'GET':
             state['writes'].append((path, route.request.post_data_json))
