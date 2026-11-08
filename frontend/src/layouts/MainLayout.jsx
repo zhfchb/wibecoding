@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext'
 
 const companyRoutes = [
   { key: '/company/profile', label: '公司资料', hint: '公司管理 / 公司资料' },
+  { key: '/company/departments', label: '部门管理', hint: '公司管理 / 部门管理' },
   { key: '/company/members', label: '成员管理', hint: '公司管理 / 成员管理' },
 ]
 const routes = [
