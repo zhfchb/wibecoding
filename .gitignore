@@ -46,3 +46,4 @@ outputs/ui-review/
 local-data/
 demo-data/local/
 outputs/logs/
+outputs/acceptance/

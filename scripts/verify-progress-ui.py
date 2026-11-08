@@ -1,5 +1,6 @@
 """Fixture-only progress filters, retry, read-only controls and mobile regression."""
 from pathlib import Path
+import os
 from urllib.parse import urlparse
 from playwright.sync_api import sync_playwright, expect
 
@@ -27,7 +28,7 @@ with sync_playwright() as p:
     page.on('pageerror', lambda e: errors.append(str(e)))
     page.add_init_script("localStorage.setItem('token','fixture');localStorage.setItem('user',JSON.stringify({userId:1,username:'fixture',role:'USER',companyRole:'HR'}))")
     page.route('**/api/v1/**', handler)
-    page.goto('http://127.0.0.1:5173/recruitment/positions/1'); page.wait_for_load_state('networkidle')
+    page.goto(os.environ.get('POSITION_UI_URL', 'http://127.0.0.1:5173') + '/recruitment/positions/1'); page.wait_for_load_state('networkidle')
     card = page.locator('.ant-card').filter(has=page.get_by_text('招聘进度总览', exact=True)).last
     expect(card.get_by_text('招聘进度加载失败', exact=True)).to_be_visible()
     fail[0] = False

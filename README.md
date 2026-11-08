@@ -90,6 +90,8 @@ mvn test '-Dtest=PythonAiE2ETest'
 
 ## 文档
 
+- [统一验收入口](docs/acceptance/RELEASE_VERIFICATION.md)：`python scripts/verify-release.py`运行跨模块HTTP、并发及页面验证并生成报告。
+
 - [招聘进度总览](docs/acceptance/RECRUITMENT_PROGRESS.md)：当前岗位结果分布、归档统计、搜索及待决定候选人筛选。
 
 - [招聘结果与归档](docs/acceptance/CANDIDATE_OUTCOMES.md)：人工结果、原因、归档与重新开启、版本历史。

@@ -1,5 +1,6 @@
 """Fixture-only outcome workflow; no real users, records or model calls."""
 import json
+import os
 from urllib.parse import urlparse
 from playwright.sync_api import sync_playwright, expect
 
@@ -41,7 +42,7 @@ with sync_playwright() as p:
     page.on('pageerror', lambda e: errors.append(str(e)))
     page.add_init_script("localStorage.setItem('token','fixture');localStorage.setItem('user',JSON.stringify({userId:1,username:'fixture',role:'USER',companyRole:'ADMIN'}))")
     page.route('**/api/v1/**', handler)
-    page.goto('http://127.0.0.1:5173/recruitment/positions/1')
+    page.goto(os.environ.get('POSITION_UI_URL', 'http://127.0.0.1:5173') + '/recruitment/positions/1')
     page.wait_for_load_state('networkidle')
     page.get_by_role('button', name='招聘结果', exact=True).click()
     expect(page.get_by_role('button', name='归档结果记录')).to_be_disabled()
