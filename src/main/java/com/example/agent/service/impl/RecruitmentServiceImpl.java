@@ -60,6 +60,7 @@ public class RecruitmentServiceImpl implements RecruitmentService {
     private final com.example.agent.service.company.PositionDepartmentService positionDepartments;
     private final com.example.agent.service.company.PositionAccess positionAccess;
     private final com.example.agent.service.company.InterviewAssignmentService interviewAssignments;
+    private final com.example.agent.service.company.RecruitmentOutcomeService outcomes;
 
     // ==================== 岗位管理 ====================
 
@@ -287,6 +288,7 @@ public class RecruitmentServiceImpl implements RecruitmentService {
     }
 
     private void deleteResumeInternal(CandidateResumeEntity resume) {
+        outcomes.cleanup(resume.getId());
         interviewAssignments.cleanupForResume(resume.getId());
         // 连带删除向量与文档元数据
         if (StringUtils.hasText(resume.getDocId())) {

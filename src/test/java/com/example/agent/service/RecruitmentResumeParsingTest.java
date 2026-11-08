@@ -26,7 +26,7 @@ class RecruitmentResumeParsingTest {
                 mock(InterviewQuestionMapper.class), mock(CandidateReportMapper.class), mock(DocumentMapper.class),
                 mock(KnowledgeService.class), mock(AiGateway.class), json, mock(ResumeParser.class),
                 new com.example.agent.service.resumes.ResumeProfileReader(json), departments,
-                mock(com.example.agent.service.company.PositionAccess.class), mock(com.example.agent.service.company.InterviewAssignmentService.class));
+                mock(com.example.agent.service.company.PositionAccess.class), mock(com.example.agent.service.company.InterviewAssignmentService.class), mock(com.example.agent.service.company.RecruitmentOutcomeService.class));
         var request = new com.example.agent.domain.recruitment.PositionRequest();
         request.setTitle("薪资校验");
         for (Integer[] range : new Integer[][]{{11,11},{11,10},{-1,12},{null,12},{11,null}}) {
@@ -59,7 +59,7 @@ class RecruitmentResumeParsingTest {
                 mock(InterviewQuestionMapper.class), mock(CandidateReportMapper.class), mock(DocumentMapper.class),
                 knowledge, mock(AiGateway.class), json, parser, new com.example.agent.service.resumes.ResumeProfileReader(json),
                 mock(com.example.agent.service.company.PositionDepartmentService.class),
-                mock(com.example.agent.service.company.PositionAccess.class), mock(com.example.agent.service.company.InterviewAssignmentService.class));
+                mock(com.example.agent.service.company.PositionAccess.class), mock(com.example.agent.service.company.InterviewAssignmentService.class), mock(com.example.agent.service.company.RecruitmentOutcomeService.class));
         var file = new MockMultipartFile("file", "resume.md", "text/plain", "Java".getBytes());
         var response = service.uploadResumes(1L, List.of(file, file));
         assertThat(response.successCount()).isEqualTo(1);

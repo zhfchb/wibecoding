@@ -90,6 +90,8 @@ mvn test '-Dtest=PythonAiE2ETest'
 
 ## 文档
 
+- [招聘结果与归档](docs/acceptance/CANDIDATE_OUTCOMES.md)：人工结果、原因、归档与重新开启、版本历史。
+
 - [面试排期与流程状态](docs/acceptance/INTERVIEW_SCHEDULING.md)：时区、冲突校验、改期取消、完成状态及历史；不发送外部通知。
 
 - [公司资料完善](docs/acceptance/COMPANY_PROFILE.md)：省市联动、必填与选填资料；已有库需执行 `deploy/migrations/20261108_company_profile.sql`。
