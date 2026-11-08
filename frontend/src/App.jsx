@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from './context/AuthContext'
 import LoginPage from './pages/LoginPage.jsx'
+import CompanyPage from './pages/CompanyPage.jsx'
 import MainLayout from './layouts/MainLayout.jsx'
 import ChatPage from './pages/ChatPage.jsx'
 import AgentPage from './pages/AgentPage.jsx'
@@ -28,6 +29,8 @@ export default function App() {
         }
       >
         <Route index element={<Navigate to="/recruitment" replace />} />
+        <Route path="company/profile" element={<CompanyPage key="profile" />} />
+        <Route path="company/members" element={<CompanyPage key="members" members />} />
         <Route path="chat" element={<ChatPage />} />
         <Route path="agent" element={<AgentPage />} />
         <Route path="knowledge" element={<KnowledgePage />} />

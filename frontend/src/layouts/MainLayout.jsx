@@ -4,6 +4,10 @@ import { Layout, Menu, Button, Drawer, Avatar } from 'antd'
 import { LogoutOutlined, MessageOutlined, FileTextOutlined, TeamOutlined, CheckSquareOutlined, MenuOutlined, ArrowRightOutlined } from '@ant-design/icons'
 import { useAuth } from '../context/AuthContext'
 
+const companyRoutes = [
+  { key: '/company/profile', label: '公司资料', hint: '公司管理 / 公司资料' },
+  { key: '/company/members', label: '成员管理', hint: '公司管理 / 成员管理' },
+]
 const routes = [
   { key: '/recruitment', icon: <TeamOutlined />, label: '岗位工作台', hint: '招聘 / 岗位工作台' },
   { key: '/knowledge', icon: <FileTextOutlined />, label: '招聘资料库', hint: '招聘支持 / 招聘资料库' },
@@ -15,13 +19,15 @@ export default function MainLayout() {
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const [mobileOpen, setMobileOpen] = useState(false)
-  const active = routes.find(r => pathname.startsWith(r.key)) || routes[0]
+  const active = [...routes, ...companyRoutes].find(r => pathname.startsWith(r.key)) || routes[0]
   const sidebar = <>
     <a className="brand" href="/recruitment" onClick={e => { e.preventDefault(); navigate('/recruitment'); setMobileOpen(false) }}><span className="brand-mark">序</span><span>择序<span className="brand-caption">技术招聘工作台</span></span></a>
     <div className="nav-caption">招聘管理</div>
     <Menu mode="inline" selectedKeys={[active.key]} items={[routes[0]]} onClick={({ key }) => { navigate(key); setMobileOpen(false) }} />
     <div className="nav-caption">招聘支持</div>
     <Menu mode="inline" selectedKeys={[active.key]} items={routes.slice(1)} onClick={({ key }) => { navigate(key); setMobileOpen(false) }} />
+    <div className="nav-caption">公司管理</div>
+    <Menu mode="inline" selectedKeys={[active.key]} items={companyRoutes} onClick={({ key }) => { navigate(key); setMobileOpen(false) }} />
     <div className="sidebar-note"><span className="eyebrow">一个清晰的起点</span><strong>先建岗位，再看人选。</strong><p>明确技能与经验要求，让每一次筛选都有依据。</p><button onClick={() => { navigate('/recruitment'); setMobileOpen(false) }}>回到岗位工作台 <ArrowRightOutlined /></button></div>
     <div className="sidebar-bottom"><span className="small-dot" />招聘辅助 · 决策由你</div>
   </>
