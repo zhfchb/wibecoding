@@ -30,7 +30,7 @@
 
 ## 已验收与未完成范围
 
-已完成185项自动回归中的180项，5项按环境跳过；真实DeepSeek/硅基流动单份虚构简历流程及四角色页面通过。详见[自动验收](../acceptance/RELEASE_VERIFICATION.md)和[真实验收](../acceptance/LIVE_RECRUITMENT_ACCEPTANCE.md)。本次真实报告没有外部市场引用，不能据此声称市场检索已验收。
+最新200项自动回归中195项通过、5项按环境跳过；一致性修复后的真实DeepSeek/硅基流动单份虚构简历流程、四角色页面及存储清理复核通过，见[运行复核](../acceptance/RUNTIME_UPGRADE_20261109.md)。详见[自动验收](../acceptance/RELEASE_VERIFICATION.md)和[真实验收](../acceptance/LIVE_RECRUITMENT_ACCEPTANCE.md)。本次真实报告没有外部市场引用，不能据此声称市场检索已验收。
 
 外部通知/日历邀请、候选人投递、Offer/入职管理、加入既有账号、成员停用/复杂角色变更、多公司切换和组织树未实现。生产部署、性能、恢复能力需单独验证。
 

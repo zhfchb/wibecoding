@@ -1,4 +1,4 @@
-> 2026-11-08：已在当前分支完成真实招聘链路验证，见[真实验收](../acceptance/LIVE_RECRUITMENT_ACCEPTANCE.md)。使用DeepSeek与硅基流动，保留独立虚构测试公司，服务运行中；以下旧日期记录按历史状态理解。
+> 2026-11-09：一致性修复后的本地库已备份升级，五服务及前端已运行，真实招聘流程、滞留向量过滤与后台清理、MySQL新库初始化SQL均通过复核，见[最新运行](../acceptance/RUNTIME_UPGRADE_20261109.md)。完整生产Compose部署仍待验收；以下旧日期记录按历史状态理解。
 
 > 2026-10-28：本地栈已增加 Python AI 服务，必须配置 AI_SERVICE_TOKEN。当前启动步骤以 README 和 docs/development/LangChain分阶段迁移.md 为准，以下保留原容器初始化说明。
 
