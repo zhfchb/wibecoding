@@ -422,7 +422,7 @@ export default function PositionWorkbenchPage() {
           <Button type="link" size="small" onClick={() => setRDrawer({ open: true, resumeId: record.id, name: record.candidateName })}>
             评估报告
           </Button>
-          {canManage && <Popconfirm title="删除此简历？" description="将连带删除向量数据与匹配结果" onConfirm={() => handleDeleteResume(record.id)}>
+          {canManage && <Popconfirm title="删除此简历？" description="将删除关联资料与匹配结果，向量将在后台清理" onConfirm={() => handleDeleteResume(record.id)}>
             <Button type="link" size="small" danger icon={<DeleteOutlined />} />
           </Popconfirm>}
         </Space>

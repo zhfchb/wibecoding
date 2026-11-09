@@ -32,6 +32,15 @@ class PositionDepartmentTest {
     @Autowired PositionDepartmentService bindings;
     @Autowired CompanyService companies;
     @Autowired JobPositionMapper positions;
+
+    @Test void staleEditDoesNotReopenClosedPosition() {
+        var input=new PositionRequest();input.setTitle("initial");var created=recruitment.createPosition(input);
+        var stale=positions.selectById(created.id());stale.setTitle("updated title");
+        recruitment.closePosition(created.id());
+        bindings.update(stale,null);
+        assertThat(positions.selectById(created.id()).getStatus()).isEqualTo("CLOSED");
+        assertThat(positions.selectById(created.id()).getTitle()).isEqualTo("updated title");
+    }
     @Autowired JdbcTemplate db;
     @MockBean AiGateway ai;
     @MockBean KnowledgeService knowledge;

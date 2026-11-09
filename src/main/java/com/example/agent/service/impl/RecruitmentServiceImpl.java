@@ -157,11 +157,11 @@ public class RecruitmentServiceImpl implements RecruitmentService {
     }
 
     @Override
+    @Transactional
     public void closePosition(Long id) {
-        JobPositionEntity entity = requireOwnedPosition(id);
-        entity.setStatus("CLOSED");
-        entity.setUpdatedAt(LocalDateTime.now());
-        jobPositionMapper.updateById(entity);
+        positionAccess.lockOwned(id);
+        jobPositionMapper.update(null,new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<JobPositionEntity>()
+                .eq(JobPositionEntity::getId,id).set(JobPositionEntity::getStatus,"CLOSED").set(JobPositionEntity::getUpdatedAt,LocalDateTime.now()));
     }
 
     @Override
@@ -220,10 +220,7 @@ public class RecruitmentServiceImpl implements RecruitmentService {
      * 单份简历入库：文档管道（解析/分块/向量化）→ LLM 结构化抽取 → 落库。
      */
     private CandidateResumeEntity uploadSingleResume(Long positionId, MultipartFile file, String fileName) {
-        // 1. 复用知识库管道：解析 → 分块 → Embedding → 向量库 + chunk 持久化
-        String documentId = knowledgeService.upload(file).documentId();
-
-        // 2. 提取全文供 LLM 分析
+        // Extract/parse outside transactions; publish document and resume together under the job lock.
         String rawText = extractText(file);
         if (!StringUtils.hasText(rawText)) {
             throw new IllegalArgumentException("简历内容为空（可能是扫描版 PDF）");
@@ -233,7 +230,6 @@ public class RecruitmentServiceImpl implements RecruitmentService {
         CandidateResumeEntity entity = new CandidateResumeEntity();
         entity.setPositionId(positionId);
         entity.setUserId(SecurityUtils.getCurrentUserId());
-        entity.setDocId(documentId);
         entity.setRawText(rawText.length() > 60000 ? rawText.substring(0, 60000) : rawText);
         entity.setCreatedAt(LocalDateTime.now());
 
@@ -253,7 +249,11 @@ public class RecruitmentServiceImpl implements RecruitmentService {
             entity.setParseError(e instanceof com.example.agent.service.resumes.ResumeParseFailure ? e.getMessage()
                     : "简历解析失败，请检查 AI 服务后重新解析");
         }
-        candidateResumeMapper.insert(entity);
+        knowledgeService.upload(file, documentId -> {
+            positionAccess.lockOwned(positionId);
+            entity.setDocId(documentId);
+            candidateResumeMapper.insert(entity);
+        });
         return entity;
     }
 
@@ -292,11 +292,7 @@ public class RecruitmentServiceImpl implements RecruitmentService {
         interviewAssignments.cleanupForResume(resume.getId());
         // 连带删除向量与文档元数据
         if (StringUtils.hasText(resume.getDocId())) {
-            try {
-                knowledgeService.deleteDocument(resume.getDocId(), resume.getUserId());
-            } catch (Exception e) {
-                log.warn("删除简历关联文档失败: docId={} err={}", resume.getDocId(), e.getMessage());
-            }
+            knowledgeService.deleteDocument(resume.getDocId(), resume.getUserId());
         }
         matchResultMapper.delete(new LambdaQueryWrapper<com.example.agent.entity.MatchResultEntity>()
                 .eq(com.example.agent.entity.MatchResultEntity::getResumeId, resume.getId()));

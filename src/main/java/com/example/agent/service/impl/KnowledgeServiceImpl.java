@@ -49,9 +49,15 @@ public class KnowledgeServiceImpl implements KnowledgeService {
     private final DocumentMapper documentMapper;
     private final DocumentChunkMapper documentChunkMapper;
     private final ObjectMapper objectMapper;
+    private final com.example.agent.service.DocumentLifecycle lifecycle;
 
     @Override
     public KnowledgeUploadResponse upload(MultipartFile file) {
+        return upload(file, null);
+    }
+
+    @Override
+    public KnowledgeUploadResponse upload(MultipartFile file, java.util.function.Consumer<String> onPublish) {
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("请选择要上传的文档");
         }
@@ -82,27 +88,39 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         List<String> segments = chunks;
         List<float[]> embeddings = embeddingModel.embedAll(segments);
 
-        for (int i = 0; i < segments.size(); i++) {
-            String chunkText = segments.get(i);
-            SparseEmbedding sparse = sparseEmbeddingModel.embed(chunkText);
-            String chunkId = UUID.randomUUID().toString();
-            float[] denseVector = embeddings.get(i);
-            ChunkRecord chunk = new ChunkRecord(
-                    chunkId,
-                    documentId,
-                    chunkText,
-                    fileName,
-                    i,
-                    denseVector,
-                    sparse,
-                    userId);
-            vectorStore.add(chunk);
-            // 持久化 chunk 到 MySQL，进程重启后可恢复内存向量库
-            persistChunk(chunk, sparse);
-        }
+        lifecycle.begin(documentId);
+        var records = new java.util.ArrayList<ChunkRecord>();
+        try {
+            for (int i = 0; i < segments.size(); i++) {
+                String chunkText = segments.get(i);
+                SparseEmbedding sparse = sparseEmbeddingModel.embed(chunkText);
+                String chunkId = UUID.randomUUID().toString();
+                float[] denseVector = embeddings.get(i);
+                ChunkRecord chunk = new ChunkRecord(
+                        chunkId,
+                        documentId,
+                        chunkText,
+                        fileName,
+                        i,
+                        denseVector,
+                        sparse,
+                        userId);
+                vectorStore.add(chunk);
+                records.add(chunk);
+                lifecycle.heartbeat(documentId);
+            }
 
-        // 持久化文档元数据到 MySQL
-        persistDocumentMetadata(documentId, fileName, chunks.size(), file.getSize(), userId);
+            // 持久化文档元数据到 MySQL
+            lifecycle.publish(documentId, () -> {
+                for (var record : records) persistChunk(record, record.sparseVector());
+                persistDocumentMetadata(documentId, fileName, chunks.size(), file.getSize(), userId);
+                if (onPublish != null) onPublish.accept(documentId);
+            });
+        } catch (RuntimeException failure) {
+            try { lifecycle.abandon(documentId); }
+            catch (RuntimeException cleanupFailure) { failure.addSuppressed(cleanupFailure); }
+            throw failure;
+        }
 
         return new KnowledgeUploadResponse(documentId, fileName, chunks.size());
     }
@@ -118,6 +136,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
     }
 
     @Override
+    @org.springframework.transaction.annotation.Transactional
     public void deleteDocument(String documentId, Long userId) {
         if (!StringUtils.hasText(documentId)) {
             throw new IllegalArgumentException("documentId 不能为空");
@@ -134,14 +153,8 @@ public class KnowledgeServiceImpl implements KnowledgeService {
             throw new IllegalArgumentException("文档不存在或无权删除");
         }
 
-        // 2. 逻辑删除文档元数据（@TableLogic 自动设置 deleted=1）
-        documentMapper.deleteById(doc.getId());
-
-        // 3. 物理删除 chunk 持久化
-        documentChunkMapper.deleteByDocumentId(documentId);
-
-        // 4. 删除内存向量库中的向量
-        vectorStore.deleteByDocumentId(documentId);
+        // Tombstone and outbox join the caller's SQL transaction; vectors are retried after commit.
+        lifecycle.remove(documentId);
 
         log.info("文档已删除: documentId={} fileName={} chunks={}", documentId, doc.getFileName(), doc.getChunkCount());
     }
@@ -157,8 +170,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
             entity.setCreatedAt(LocalDateTime.now());
             documentMapper.insert(entity);
         } catch (Exception e) {
-            // 元数据持久化失败不影响向量库导入结果，只记日志
-            log.error("保存文档元数据失败 documentId={} fileName={}", documentId, fileName, e);
+            throw new IllegalStateException("文档元数据保存失败，上传未完成", e);
         }
     }
 
@@ -182,7 +194,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
             entity.setCreatedAt(LocalDateTime.now());
             documentChunkMapper.insert(entity);
         } catch (Exception e) {
-            log.error("保存 chunk 失败 chunkId={} documentId={}", chunk.id(), chunk.documentId(), e);
+            throw new IllegalStateException("文档切片保存失败，上传未完成", e);
         }
     }
 

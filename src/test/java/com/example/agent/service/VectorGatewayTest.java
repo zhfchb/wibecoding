@@ -35,7 +35,7 @@ class VectorGatewayTest {
         verifyNoInteractions(retrieval);
         var properties = mock(RagProperties.class);
         var service = new RagRetrievalService(mock(EmbeddingModel.class), mock(VectorStore.class), properties,
-                new HashingSparseModel(), new NoopRerankModel());
+                new HashingSparseModel(), new NoopRerankModel(), mock(DocumentLifecycle.class));
         assertThatThrownBy(() -> service.retrieve("Java", null)).isInstanceOf(IllegalArgumentException.class);
     }
 }

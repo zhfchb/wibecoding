@@ -15,6 +15,7 @@ public class RagRetrievalService {
     private final RagProperties properties;
     private final SparseEmbeddingModel sparseEmbeddingModel;
     private final RerankModel rerankModel;
+    private final DocumentLifecycle lifecycle;
 
     public List<VectorMatch> retrieve(String query, Long ownerId) {
         if (ownerId == null || ownerId <= 0) throw new IllegalArgumentException("ownerId required");
@@ -28,6 +29,7 @@ public class RagRetrievalService {
                     properties.retrieval().minScore(), hybrid.rrfK(), ownerId)
                 : vectorStore.search(dense, recall, properties.retrieval().minScore(), ownerId);
         int topK = rerank != null && rerank.topK() > 0 ? rerank.topK() : properties.retrieval().topK();
+        candidates = lifecycle.visible(candidates, ownerId);
         return rerank != null && rerank.enabled() ? rerankModel.rerank(query, candidates, topK)
                 : candidates.subList(0, Math.min(topK, candidates.size()));
     }

@@ -122,7 +122,7 @@ public class RecruitmentController {
         return recruitmentService.listResumes(positionId);
     }
 
-    @Operation(summary = "删除简历", description = "删除简历记录并连带删除其向量数据")
+    @Operation(summary = "删除简历", description = "事务内删除简历及关联资料，立即禁止检索，后台重试向量清理")
     @DeleteMapping("/resumes/{resumeId}")
     public void deleteResume(@PathVariable Long resumeId) {
         recruitmentService.deleteResume(resumeId);

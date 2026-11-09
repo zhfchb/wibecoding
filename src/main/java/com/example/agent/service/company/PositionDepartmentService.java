@@ -34,6 +34,8 @@ public class PositionDepartmentService {
     @Transactional
     public void update(JobPositionEntity entity, Long departmentId) {
         var previous = ownedLocked(entity.getId());
+        // An edit payload may have been read before another request closed the job.
+        entity.setStatus(previous.getStatus());
         entity.setCompanyId(previous.getCompanyId());
         entity.setDepartmentId(previous.getDepartmentId());
         if (previous.getDepartmentId() != null) entity.setDepartment(previous.getDepartment());

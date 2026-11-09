@@ -47,9 +47,9 @@ public class KnowledgeController {
     }
 
     /**
-     * 删除指定文档：逻辑删除元数据 + 物理删除 chunk + 删除内存向量库中的向量。
+     * 删除指定文档：事务内隐藏元数据/删除切片并登记向量清理，后台失败重试。
      */
-    @Operation(summary = "删除文档", description = "删除指定 documentId 的文档元数据、chunk 持久化、向量库中的向量，只能删自己的文档")
+    @Operation(summary = "删除文档", description = "事务内删除文档与切片并立即禁止检索，后台重试向量物理清理，只能删自己的文档")
     @DeleteMapping("/documents/{documentId}")
     public void deleteDocument(@PathVariable String documentId) {
         knowledgeService.deleteDocument(documentId, SecurityUtils.getCurrentUserId());

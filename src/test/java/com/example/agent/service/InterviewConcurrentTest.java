@@ -90,6 +90,17 @@ class InterviewConcurrentTest {
         assertThat(db.queryForObject("SELECT COUNT(*) FROM recruitment_candidate_outcome WHERE resume_id=?",Long.class,resume)).isZero();
         assertThat(db.queryForObject("SELECT COUNT(*) FROM recruitment_candidate_outcome_event WHERE resume_id=?",Long.class,resume)).isZero();
     }
+    @Test void concurrentCloseAndEditPreserveBothClosureAndNewTitle() throws Exception {
+        var counter=new java.util.concurrent.atomic.AtomicInteger();
+        race(()->{
+            login(owner);
+            if(counter.getAndIncrement()==0) recruitment.closePosition(job);
+            else {var input=new PositionRequest();input.setTitle("concurrently updated");recruitment.updatePosition(job,input);}
+            return true;
+        });
+        assertThat(db.queryForObject("SELECT status FROM job_position WHERE id=?",String.class,job)).isEqualTo("CLOSED");
+        assertThat(db.queryForObject("SELECT title FROM job_position WHERE id=?",String.class,job)).isEqualTo("concurrently updated");
+    }
     @Test void concurrentAssignmentCreatesOneRecordAndOneActivity() throws Exception {
         var ids=race(()->{login(owner);return interviews.assign(resume,interviewer).id();});
         assertThat(ids).hasSize(2);assertThat(ids.get(0)).isEqualTo(ids.get(1));

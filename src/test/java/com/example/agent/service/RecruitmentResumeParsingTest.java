@@ -51,7 +51,10 @@ class RecruitmentResumeParsingTest {
         var parser = mock(ResumeParser.class);
         var json = new ObjectMapper();
         when(positions.selectById(1L)).thenReturn(new JobPositionEntity());
-        when(knowledge.upload(any())).thenReturn(new KnowledgeUploadResponse("doc", "resume.md", 1));
+        when(knowledge.upload(any(),any())).thenAnswer(call -> {
+            call.getArgument(1, java.util.function.Consumer.class).accept("doc");
+            return new KnowledgeUploadResponse("doc", "resume.md", 1);
+        });
         when(parser.parse(anyString()))
                 .thenReturn(json.readTree("{\"candidate_name\":\"测试\",\"skills\":[\"Java\"],\"years_exp\":3}"))
                 .thenThrow(new IllegalStateException("AI service unavailable"));

@@ -22,7 +22,10 @@ public class QdrantVectorStore implements VectorStore {
     public QdrantVectorStore(String baseUrl, String collectionName, int dimension) {
         this.collectionName = collectionName;
         this.dimension = dimension;
-        this.restClient = RestClient.builder().baseUrl(baseUrl).build();
+        var factory = new org.springframework.http.client.SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(3000);
+        factory.setReadTimeout(15000);
+        this.restClient = RestClient.builder().baseUrl(baseUrl).requestFactory(factory).build();
     }
 
     @Override

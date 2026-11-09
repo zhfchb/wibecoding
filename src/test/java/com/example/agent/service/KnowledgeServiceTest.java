@@ -30,6 +30,7 @@ class KnowledgeServiceTest {
     private final DocumentMapper documentMapper = mock(DocumentMapper.class);
     private final DocumentChunkMapper documentChunkMapper = mock(DocumentChunkMapper.class);
     private final VectorStore vectorStore = new InMemoryVectorStore();
+    private final DocumentLifecycle lifecycle = mock(DocumentLifecycle.class);
     private final KnowledgeServiceImpl service = new KnowledgeServiceImpl(
             new DocumentChunker(50, 10),
             new LexicalHashEmbeddingModel(768),
@@ -38,7 +39,12 @@ class KnowledgeServiceTest {
             properties(),
             documentMapper,
             documentChunkMapper,
-            new ObjectMapper());
+            new ObjectMapper(), lifecycle);
+
+    KnowledgeServiceTest() {
+        org.mockito.Mockito.doAnswer(call -> { call.getArgument(1, Runnable.class).run(); return null; })
+                .when(lifecycle).publish(any(), any());
+    }
 
     @Test
     void uploadsTextDocumentAndReturnsChunkCount() {

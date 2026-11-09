@@ -1,4 +1,7 @@
 # 测试专用 profile：仅用于让 @SpringBootTest 在无真实 DeepSeek Key 时也能加载上下文。
+knowledge:
+  cleanup:
+    enabled: false
 # 这里只放 dummy 值，不调用任何外部服务；embedding/vector-store 都用本地实现。
 # MySQL 用 H2 内存库替代，Redis 用本地实现替代，避免测试依赖外部服务。
 spring:
