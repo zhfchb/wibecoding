@@ -13,10 +13,11 @@ const { Text, Paragraph } = Typography
 // 生成随机 sessionId
 const genSessionId = () => `web-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 
-// 截取预览文本
-const preview = (text, max = 30) => {
-  if (!text) return '(空)'
-  return text.length > max ? text.slice(0, max) + '...' : text
+// Keep prefilled and edited values inside the same UTF-16 limit as Java.
+const limitTitle = (text) => {
+  let value = String(text || '').slice(0, 80)
+  if (/[\uD800-\uDBFF]$/.test(value)) value = value.slice(0, -1)
+  return value
 }
 
 export default function ChatPage() {
@@ -188,10 +189,10 @@ export default function ChatPage() {
                     ellipsis
                     style={{ fontSize: 13, flex: 1 }}
                   >
-                    {item.title || preview(item.content)}
+                    {item.title || '新会话'}
                   </Text>
                   <Button type="text" size="small" aria-label={item.pinned ? '取消置顶' : '置顶会话'} icon={<PushpinOutlined />} style={{ color: item.pinned ? '#245b49' : undefined }} onClick={e => { e.stopPropagation(); updateSession(item.sessionId, { pinned: !item.pinned }) }} />
-                  <Button type="text" size="small" aria-label="重命名会话" icon={<EditOutlined />} onClick={e => { e.stopPropagation(); setRenaming(item.sessionId); setTitle(item.title || preview(item.content, 80)) }} />
+                  <Button type="text" size="small" aria-label="重命名会话" icon={<EditOutlined />} onClick={e => { e.stopPropagation(); setRenaming(item.sessionId); setTitle(limitTitle(item.title || '新会话')) }} />
                   <Popconfirm
                     title="删除此会话？"
                     description="将清除该会话的所有历史消息"
@@ -310,8 +311,8 @@ export default function ChatPage() {
         </div>
       </Card>
     </div>
-    <Modal title="重命名会话" open={!!renaming} onCancel={() => setRenaming(null)} okText="保存" cancelText="取消" onOk={async () => { if (!title.trim()) { message.warning('请输入会话名称'); return }; if (await updateSession(renaming, { title: title.trim() })) setRenaming(null) }}>
-      <Input aria-label="会话名称" value={title} onChange={e => setTitle(e.target.value)} maxLength={80} showCount />
+    <Modal title="重命名会话" open={!!renaming} onCancel={() => setRenaming(null)} okText="保存" cancelText="取消" onOk={async () => { if (!title.trim() || title.trim().length > 80) { message.warning('请输入1～80个字符的会话名称'); return }; if (await updateSession(renaming, { title: title.trim() })) setRenaming(null) }}>
+      <Input aria-label="会话名称" value={title} onChange={e => setTitle(limitTitle(e.target.value))} maxLength={80} showCount />
     </Modal></div>
   )
 }

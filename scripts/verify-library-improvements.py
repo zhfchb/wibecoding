@@ -1,5 +1,6 @@
 """Fixture browser regression for sources, session controls, Markdown and batch uploads."""
 import json
+import os
 import re
 from pathlib import Path
 from urllib.parse import urlparse
@@ -47,7 +48,8 @@ with sync_playwright() as p:
     page = browser.new_page(viewport=dict(width=1440, height=1000))
     page.add_init_script("localStorage.setItem('token','fixture'); localStorage.setItem('user', JSON.stringify({userId:1,username:'fixture',role:'USER',companyRole:'HR'}));localStorage.setItem('currentSessionId','fixture-session');")
     page.route('**/api/v1/**', handler)
-    page.goto('http://127.0.0.1:5173/chat'); page.wait_for_load_state('networkidle')
+    base=os.environ.get('POSITION_UI_URL','http://127.0.0.1:5173')
+    page.goto(base+'/chat'); page.wait_for_load_state('networkidle')
     page.get_by_placeholder('输入问题，回车发送（Shift+回车换行）').fill('必须技能？')
     page.get_by_role('button', name=re.compile('发.*送')).click()
     expect(page.locator('summary').filter(has_text='Java岗位.md')).to_be_visible()
@@ -64,7 +66,12 @@ with sync_playwright() as p:
     expect(page.locator('summary')).to_contain_text('Java岗位.md')
     page.get_by_role('button', name='置顶会话', exact=True).click()
     expect(page.get_by_role('button', name='取消置顶', exact=True)).to_be_visible()
+    state['title']='长'*83
+    page.reload();page.wait_for_load_state('networkidle')
     page.get_by_role('button', name='重命名会话', exact=True).click()
+    expect(page.get_by_role('textbox', name='会话名称')).to_have_value('长'*80)
+    page.get_by_role('textbox', name='会话名称').fill('超'*100)
+    expect(page.get_by_role('textbox', name='会话名称')).to_have_value('超'*80)
     page.get_by_role('textbox', name='会话名称').fill('Java招聘资料')
     page.get_by_role('button', name=re.compile('保.*存')).click()
     expect(page.get_by_text('Java招聘资料', exact=True)).to_be_visible()
@@ -75,13 +82,13 @@ with sync_playwright() as p:
     page.get_by_placeholder('输入问题，回车发送（Shift+回车换行）').fill('再问一次')
     page.get_by_role('button', name=re.compile('发.*送')).click()
     expect(page.locator('summary')).to_have_count(2)
-    page.goto('http://127.0.0.1:5173/agent'); page.wait_for_load_state('networkidle')
+    page.goto(base+'/agent'); page.wait_for_load_state('networkidle')
     expect(page.get_by_role('heading', name='初筛清单')).to_be_visible()
     expect(page.locator('.markdown-body strong')).to_have_text('必须技能')
     expect(page.locator('.markdown-body table')).to_be_visible()
     expect(page.locator('.markdown-body pre code')).to_be_visible()
     assert page.evaluate('window.unsafeDraft === undefined')
-    page.goto('http://127.0.0.1:5173/knowledge'); page.wait_for_load_state('networkidle')
+    page.goto(base+'/knowledge'); page.wait_for_load_state('networkidle')
     files = [dict(name=f'{i:02}.md', mimeType='text/markdown', buffer=b'# fixture') for i in range(1, 5)]
     page.locator('input[type=file]').set_input_files(files)
     expect(page.get_by_text('结果待核对', exact=True)).to_be_visible()

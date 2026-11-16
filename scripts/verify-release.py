@@ -41,6 +41,9 @@ def main():
             ('collaboration-browser', 'verify-position-operations-ui.py'),
             ('interview-browser', 'verify-interview-ui.py'),
             ('hiring-workflow-browser', 'verify-hiring-workflow-ui.py')])
+        steps.extend((name, [sys.executable, str(root / 'scripts' / script)], root) for name, script in [
+            ('library-browser', 'verify-library-improvements.py'),
+            ('upload-recovery-browser', 'verify-knowledge-upload-ui.py')])
     report = dict(scope='H2/hash vectors + simulated AI + fixture browser APIs; no production acceptance claim', steps=[])
     failed = False
     for name, command, cwd in steps:
