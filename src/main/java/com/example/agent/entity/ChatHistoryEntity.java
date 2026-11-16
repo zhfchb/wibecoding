@@ -28,5 +28,7 @@ public class ChatHistoryEntity {
 
     private String content;
 
+    private String sourcesJson;
+
     private LocalDateTime createdAt;
 }

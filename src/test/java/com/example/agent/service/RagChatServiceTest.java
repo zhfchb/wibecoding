@@ -37,6 +37,9 @@ class RagChatServiceTest {
             "{\"answer\":\"answer\",\"sources\":[{\"text\":\"Java\",\"fileName\":\"a.md\",\"chunkIndex\":0,\"score\":0.9}]}"));
         var response = service().chat("Java?", "session");
         assertThat(response.sources()).hasSize(1);
+        var saved = ArgumentCaptor.forClass(ChatHistoryEntity.class);
+        verify(history, times(2)).insert(saved.capture());
+        assertThat(mapper.readTree(saved.getAllValues().get(1).getSourcesJson()).get(0).path("fileName").asText()).isEqualTo("a.md");
         var body = ArgumentCaptor.forClass(Object.class);
         verify(gateway).post(eq("/internal/v1/rag"), body.capture());
         assertThat(((Map<?, ?>)body.getValue()).get("ownerId")).isEqualTo(7L);
@@ -45,6 +48,7 @@ class RagChatServiceTest {
     @Test void streamingKeepsOwnerOutsideSecurityThread() throws Exception {
         doAnswer(invocation -> {
             Consumer<JsonNode> consumer = invocation.getArgument(2);
+            consumer.accept(mapper.readTree("{\"type\":\"sources\",\"sources\":[{\"text\":\"Java\",\"fileName\":\"a.md\",\"chunkIndex\":0,\"score\":0.9}]}"));
             consumer.accept(mapper.readTree("{\"type\":\"token\",\"text\":\"hello\"}"));
             consumer.accept(mapper.readTree("{\"type\":\"done\"}"));
             return null;
@@ -53,6 +57,7 @@ class RagChatServiceTest {
         var rows = ArgumentCaptor.forClass(ChatHistoryEntity.class);
         verify(history, times(2)).insert(rows.capture());
         assertThat(rows.getAllValues()).allMatch(row -> row.getUserId().equals(7L));
+        assertThat(mapper.readTree(rows.getAllValues().get(1).getSourcesJson()).get(0).path("fileName").asText()).isEqualTo("a.md");
     }
     @Test void incompleteStreamDoesNotPersistAnswer() throws Exception {
         service().streamChat("question", "session");

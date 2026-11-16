@@ -63,7 +63,7 @@ export const chatApi = {
 }
 
 // SSE 流式对话：用 fetch + ReadableStream 逐 token 读取
-export async function streamChat(message, sessionId, onToken, onDone, onError) {
+export async function streamChat(message, sessionId, onToken, onDone, onError, onSources = () => {}) {
   try {
     const token = localStorage.getItem('token')
     const resp = await fetch('/api/v1/chat/stream', {
@@ -80,20 +80,33 @@ export async function streamChat(message, sessionId, onToken, onDone, onError) {
     const decoder = new TextDecoder()
     let buffer = ''
 
+    let eventName = ''
+    let eventData = []
+    const dispatch = () => {
+      if (eventData.length) {
+        const data = eventData.join('\n')
+        if (eventName === 'sources') onSources(JSON.parse(data))
+        else onToken(data)
+      }
+      eventName = ''; eventData = []
+    }
+    const consume = (text) => {
+      buffer += text
+      const lines = buffer.split('\n')
+      buffer = lines.pop()
+      for (const raw of lines) {
+        const line = raw.endsWith('\r') ? raw.slice(0, -1) : raw
+        if (!line) dispatch()
+        else if (line.startsWith('event:')) eventName = line.slice(6).trim()
+        else if (line.startsWith('data:')) eventData.push(line.slice(5).replace(/^ /, ''))
+      }
+    }
     while (true) {
       const { done, value } = await reader.read()
       if (done) break
-      buffer += decoder.decode(value, { stream: true })
-      // SSE 格式：data: xxx\n\n
-      const lines = buffer.split('\n')
-      buffer = lines.pop() // 保留最后不完整的行
-      for (const line of lines) {
-        if (line.startsWith('data:')) {
-          const data = line.slice(5).trim()
-          if (data) onToken(data)
-        }
-      }
+      consume(decoder.decode(value, { stream: true }))
     }
+    consume(decoder.decode() + '\n\n')
     onDone()
   } catch (err) {
     onError(err)

@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS chat_history (
     session_id VARCHAR(64) NOT NULL,
     role       VARCHAR(16) NOT NULL,
     content    TEXT        NOT NULL,
+    sources_json TEXT,
     created_at TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX idx_chat_history_user ON chat_history(user_id);

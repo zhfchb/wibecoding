@@ -55,7 +55,7 @@ export default function ChatPage() {
   useEffect(() => {
     chatApi.history(sessionId).then((resp) => {
       const history = resp.data || []
-      setMessages(history.map((h) => ({ role: h.role, content: h.content })))
+      setMessages(history.map((h) => ({ role: h.role, content: h.content, sources: (() => { try { return JSON.parse(h.sourcesJson || '[]') } catch { return [] } })() })))
     }).catch(() => {/* 新会话无历史，忽略 */})
   }, [sessionId])
 
@@ -121,6 +121,7 @@ export default function ChatPage() {
           message.error('流式对话失败: ' + err.message)
           setLoading(false)
         },
+        (sources) => setMessages(prev => prev.map((m, i) => i === idx ? { ...m, sources } : m)),
       )
     } else {
       try {
@@ -264,14 +265,13 @@ export default function ChatPage() {
               ) : (
                 <span style={{ whiteSpace: 'pre-wrap' }}>{msg.content}</span>
               )}
+              {msg.role === 'assistant' && msg.content && !loading && !msg.sources?.length && <div style={{ color: '#777', fontSize: 12 }}>此回答未保存可核对来源；旧会话可重新提问获取来源。</div>}
               {msg.sources && msg.sources.length > 0 && (
                 <>
                   <Divider style={{ margin: '8px 0' }} />
                   <Text type="secondary" style={{ fontSize: 12 }}>来源：</Text>
                   {msg.sources.map((s, j) => (
-                    <Tag key={j} style={{ fontSize: 11 }}>
-                      {s.fileName}
-                    </Tag>
+                    <details key={j} style={{ marginTop: 8 }}><summary style={{ cursor: 'pointer' }}>[{j + 1}] {s.fileName || '未命名来源'} · 片段 {s.chunkIndex}</summary><div style={{ whiteSpace: 'pre-wrap', marginTop: 8 }}>{s.text || '未提供原文片段'}</div></details>
                   ))}
                 </>
               )}

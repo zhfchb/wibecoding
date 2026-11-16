@@ -53,7 +53,7 @@ public class RagChatServiceImpl implements RagChatService {
         var result = gateway.post("/internal/v1/rag", request(message, session, owner));
         String answer = result.path("answer").asText();
         var sources = mapper.convertValue(result.path("sources"), new com.fasterxml.jackson.core.type.TypeReference<List<RagSource>>() {});
-        saveHistory(session, owner, message, answer);
+        saveHistory(session, owner, message, answer, mapper.valueToTree(sources).toString());
         return new RagChatResponse(session, answer, sources);
     }
 
@@ -70,6 +70,7 @@ public class RagChatServiceImpl implements RagChatService {
         aiTaskExecutor.execute(() -> {
             var answer = new StringBuilder();
             var done = new AtomicBoolean();
+            var sources = new java.util.concurrent.atomic.AtomicReference<String>("[]");
             try {
                 gateway.stream("/internal/v1/rag/stream", body, event -> {
                     if (stopped.get()) throw new IllegalStateException("Stream closed");
@@ -80,13 +81,18 @@ public class RagChatServiceImpl implements RagChatService {
                             try { emitter.send(SseEmitter.event().data(token)); }
                             catch (Exception e) { throw new IllegalStateException("Client disconnected"); }
                         }
+                        case "sources" -> {
+                            sources.set(event.path("sources").toString());
+                            try { emitter.send(SseEmitter.event().name("sources").data(event.path("sources"))); }
+                            catch (Exception e) { throw new IllegalStateException("Client disconnected"); }
+                        }
                         case "done" -> done.set(true);
                         case "error" -> throw new IllegalStateException("AI generation failed");
                     }
                 });
                 if (!done.get()) throw new IllegalStateException("Incomplete AI stream");
                 if (!stopped.get()) {
-                    saveHistory(session, owner, message, answer.toString());
+                    saveHistory(session, owner, message, answer.toString(), sources.get());
                     emitter.complete();
                 }
             } catch (Exception e) { emitter.completeWithError(e); }
@@ -137,19 +143,20 @@ public class RagChatServiceImpl implements RagChatService {
         return StringUtils.hasText(sessionId) ? sessionId : UUID.randomUUID().toString();
     }
 
-    private void saveHistory(String session, Long owner, String message, String answer) {
+    private void saveHistory(String session, Long owner, String message, String answer, String sourcesJson) {
         sessionStore.append(owner + ":" + session, SessionMessage.user(message));
         sessionStore.append(owner + ":" + session, SessionMessage.assistant(answer));
-        persistHistory(session, owner, "user", message);
-        persistHistory(session, owner, "assistant", answer);
+        persistHistory(session, owner, "user", message, null);
+        persistHistory(session, owner, "assistant", answer, sourcesJson);
     }
 
-    private void persistHistory(String session, Long owner, String role, String content) {
+    private void persistHistory(String session, Long owner, String role, String content, String sourcesJson) {
         ChatHistoryEntity entity = new ChatHistoryEntity();
         entity.setSessionId(session);
         entity.setUserId(owner);
         entity.setRole(role);
         entity.setContent(content);
+        entity.setSourcesJson(sourcesJson);
         entity.setCreatedAt(LocalDateTime.now());
         chatHistoryMapper.insert(entity);
     }
