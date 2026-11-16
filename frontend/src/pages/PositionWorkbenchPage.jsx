@@ -22,6 +22,7 @@ import ResumeParseTaskPanel from '../components/ResumeParseTaskPanel'
 import useResumeParseTask from '../hooks/useResumeParseTask'
 import useMaterialTask from '../hooks/useMaterialTask'
 import MaterialTaskStatus from '../components/MaterialTaskStatus'
+import HiringNextSteps from '../components/HiringNextSteps'
 
 const { Text, Paragraph, Title } = Typography
 
@@ -500,6 +501,7 @@ export default function PositionWorkbenchPage() {
       <div className="workflow-guide workbench-guide">
         {[[resumes.length > 0, '01', '上传简历', `${resumes.length} 份已收录`], [matches.length > 0, '02', '查看匹配', `${matches.length} 位已评分`], [matches.some(m => m.hrDecision === 'APPROVED'), '03', '准备面试', '人工通过后生成面试资料']].map(([done, n, title, hint]) => <div key={n}><span className={`step-number ${done ? 'step-done' : ''}`}>{done ? <CheckOutlined /> : n}</span><div><strong>{title}</strong><p>{hint}</p></div></div>)}
       </div>
+      <HiringNextSteps positionId={id} resumes={resumes} matches={matches} canOperate={canOperate} revision={qDrawer.open || rDrawer.open} />
       <Card
         title={
           <Space>

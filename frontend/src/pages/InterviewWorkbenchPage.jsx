@@ -14,6 +14,7 @@ export default function InterviewWorkbenchPage() {
   const [saving, setSaving] = useState(false)
   const [conflict, setConflict] = useState(false)
   const [dirty, setDirty] = useState(false)
+  const [taskFilter, setTaskFilter] = useState('ALL')
   const [form] = Form.useForm()
   const sequence = useRef(0)
   const inFlight = useRef(false)
@@ -78,11 +79,24 @@ export default function InterviewWorkbenchPage() {
   const submitted = detail?.assignment.status === 'SUBMITTED'
   const scheduleBlocked = ['CANCELLED', 'NO_SHOW'].includes(detail?.assignment.schedule?.status)
   const notEnded = detail?.assignment.schedule && Date.parse(detail.assignment.schedule.endAt) > Date.now()
+  const taskGroup = row => row.status === 'SUBMITTED' ? 'SUBMITTED'
+    : ['CANCELLED', 'NO_SHOW'].includes(row.schedule?.status) ? 'CANCELLED'
+      : !row.schedule ? 'UNSCHEDULED'
+        : Date.parse(row.schedule.endAt) <= Date.now() ? 'EVALUATE'
+          : Date.parse(row.schedule.startAt) <= Date.now() ? 'IN_PROGRESS' : 'PREPARE'
+  const groups = { UNSCHEDULED: '待排期', PREPARE: '待准备', IN_PROGRESS: '进行中', EVALUATE: '待提交评价', SUBMITTED: '已提交', CANCELLED: '已取消或未到场' }
+  const filteredRows = rows.filter(row => taskFilter === 'ALL' || taskGroup(row) === taskFilter)
   return <div>
     <PageIntro eyebrow="INTERVIEW WORKSPACE" title="我的面试安排">围绕候选人经历与岗位要求独立评价。草稿仅本人可见；提交后供招聘负责人参考，不自动改变筛选决策。</PageIntro>
+    <Card title="我的面试待办" style={{ marginBottom: 20 }}>
+      <Typography.Paragraph>面试前：核对时间、岗位要求和已有面试题。面试后：记录实际证据，先保存草稿，确认后提交评价。</Typography.Paragraph>
+      <Space wrap>{Object.entries(groups).map(([value, label]) => <Tag key={value}>{label} {rows.filter(row => taskGroup(row) === value).length}</Tag>)}</Space>
+      <Typography.Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 0 }}>没有排期请联系HR；未来面试可先存草稿，结束前不能提交。提交后锁定，最终招聘决定由HR或岗位负责人确认。</Typography.Paragraph>
+    </Card>
     <Card title={`获分配的面试（${rows.length}）`} extra={<Button loading={loading} onClick={load}>刷新安排</Button>}>
       {error && <Alert type="warning" message={error} style={{ marginBottom: 16 }} />}
-      <Table rowKey="id" loading={loading} dataSource={rows} scroll={{ x: 600 }} locale={{ emptyText: <Empty description="暂无面试安排，请联系招聘负责人分配候选人" /> }} columns={[
+      <Select aria-label="按面试任务筛选" value={taskFilter} onChange={setTaskFilter} style={{ width: 220, marginBottom: 16 }} options={[{ value: 'ALL', label: '全部面试任务' }, ...Object.entries(groups).map(([value, label]) => ({ value, label }))]} />
+      <Table rowKey="id" loading={loading} dataSource={filteredRows} scroll={{ x: 600 }} locale={{ emptyText: <Empty description={rows.length ? '没有符合筛选条件的面试' : '暂无面试安排，请联系招聘负责人分配候选人'} /> }} columns={[
         { title: '岗位', dataIndex: 'title' }, { title: '候选人', dataIndex: 'candidateName' },
         { title: '时间与方式', width: 260, render: (_, row) => <ScheduleInfo schedule={row.schedule} /> },
         { title: '面试进度', dataIndex: 'flowStatus', render: value => interviewFlow[value] || '待排期' },
