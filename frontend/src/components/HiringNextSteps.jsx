@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Alert, Button, Card, Space, Tag, Typography } from 'antd'
 import api from '../api'
 
-export default function HiringNextSteps({ positionId, resumes, matches, canOperate, revision }) {
+export default function HiringNextSteps({ positionId, resumes, matches, canOperate, closed, revision }) {
   const [assignments, setAssignments] = useState(null)
   const [error, setError] = useState(false)
   const [refresh, setRefresh] = useState(0)
@@ -20,7 +20,8 @@ export default function HiringNextSteps({ positionId, resumes, matches, canOpera
   const unassigned = approved.filter(m => !live.some(a => a.resumeId === m.resumeId)).length
   const unscheduled = live.filter(a => a.status !== 'SUBMITTED' && !a.schedule).length
   const pendingEvaluation = live.filter(a => a.status !== 'SUBMITTED' && a.schedule && !['CANCELLED', 'NO_SHOW'].includes(a.schedule.status) && Date.parse(a.schedule.endAt) <= Date.now()).length
-  const hint = !resumes.length ? '先上传收到的简历。候选人资料解析后，再查看匹配依据。'
+  const hint = closed ? '岗位已关闭。可核对历史评价、补充跟进并整理招聘结果；新增或修改面试排期前请核对岗位状态。'
+    : !resumes.length ? '先上传收到的简历。候选人资料解析后，再查看匹配依据。'
     : parsed < resumes.length ? '先核对解析失败或仍在处理的简历，失败项可重新解析。'
       : !matches.length ? '简历已收录，下一步执行人岗匹配，再由HR核实证据并作初筛决定。'
         : matches.some(m => m.hrDecision === 'PENDING') ? '有候选人等待初筛：查看证据后，人工决定是否进入面试。'

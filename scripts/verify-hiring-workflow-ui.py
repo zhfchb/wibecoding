@@ -14,7 +14,7 @@ def handler(route):
     path = urlparse(route.request.url).path
     method = route.request.method
     if path.endswith('/positions/1'):
-        route.fulfill(json=dict(id=1, title='流程练习岗位', status='OPEN', canManage=state['role']=='OWNER', canOperate=state['role']!='VIEWER', requiredSkills=['Java'], preferredSkills=[]))
+        route.fulfill(json=dict(id=1, title='流程练习岗位', status='CLOSED' if state.get('closed') else 'OPEN', canManage=state['role']=='OWNER', canOperate=state['role']!='VIEWER', requiredSkills=['Java'], preferredSkills=[]))
     elif path.endswith('/positions/1/interviews'):
         route.fulfill(json=state['assignments'])
     elif path.endswith('/company/members'):
@@ -79,6 +79,9 @@ with sync_playwright() as p:
     page.get_by_role('button',name='确认分配',exact=True).click()
     expect(page.get_by_role('cell',name='第2轮',exact=True)).to_be_visible()
     page.locator('.ant-modal:visible .ant-modal-close').click()
+    state['closed']=True;page.reload();page.wait_for_load_state('networkidle')
+    expect(page.get_by_text('岗位已关闭。可核对历史评价、补充跟进并整理招聘结果；新增或修改面试排期前请核对岗位状态。',exact=True)).to_be_visible()
+    state['closed']=False
     state['role']='VIEWER';page.reload();page.wait_for_load_state('networkidle')
     page.get_by_role('button',name='跟进与汇总',exact=True).click()
     expect(page.get_by_role('cell',name='负责人汇总意见',exact=True)).to_be_visible()
