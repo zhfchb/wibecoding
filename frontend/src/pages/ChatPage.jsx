@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { Card, Input, Button, Space, Typography, Tag, Divider, Switch, message, List, Popconfirm } from 'antd'
-import { SendOutlined, ReloadOutlined, PlusOutlined, MessageOutlined, DeleteOutlined } from '@ant-design/icons'
+import { Card, Input, Button, Space, Typography, Tag, Divider, Switch, message, List, Popconfirm, Modal } from 'antd'
+import { SendOutlined, ReloadOutlined, PlusOutlined, MessageOutlined, DeleteOutlined, PushpinOutlined, EditOutlined } from '@ant-design/icons'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { chatApi, streamChat } from '../api'
@@ -28,6 +28,12 @@ export default function ChatPage() {
     return localStorage.getItem('currentSessionId') || genSessionId()
   })
   const [sessions, setSessions] = useState([])
+  const [renaming, setRenaming] = useState(null)
+  const [title, setTitle] = useState('')
+  const updateSession = async (sid, data) => {
+    try { await chatApi.updateSession(sid, data); loadSessions(); return true }
+    catch (err) { message.error(err.response?.data?.message || '修改失败'); return false }
+  }
   const msgEndRef = useRef(null)
 
   // sessionId 变化时存 localStorage
@@ -60,12 +66,14 @@ export default function ChatPage() {
   }, [sessionId])
 
   const handleNewSession = () => {
+    if (loading) return
     const newId = genSessionId()
     setSessionId(newId)
     setMessages([])
   }
 
   const handleSelectSession = (sid) => {
+    if (loading) return
     setSessionId(sid)
   }
 
@@ -184,8 +192,10 @@ export default function ChatPage() {
                     ellipsis
                     style={{ fontSize: 13, flex: 1 }}
                   >
-                    {item.role === 'user' ? preview(item.content) : preview(item.content)}
+                    {item.title || preview(item.content)}
                   </Text>
+                  <Button type="text" size="small" aria-label={item.pinned ? '取消置顶' : '置顶会话'} icon={<PushpinOutlined />} style={{ color: item.pinned ? '#245b49' : undefined }} onClick={e => { e.stopPropagation(); updateSession(item.sessionId, { pinned: !item.pinned }) }} />
+                  <Button type="text" size="small" aria-label="重命名会话" icon={<EditOutlined />} onClick={e => { e.stopPropagation(); setRenaming(item.sessionId); setTitle(item.title || preview(item.content, 80)) }} />
                   <Popconfirm
                     title="删除此会话？"
                     description="将清除该会话的所有历史消息"
@@ -303,6 +313,9 @@ export default function ChatPage() {
           </Button>
         </div>
       </Card>
-    </div></div>
+    </div>
+    <Modal title="重命名会话" open={!!renaming} onCancel={() => setRenaming(null)} okText="保存" cancelText="取消" onOk={async () => { if (!title.trim()) { message.warning('请输入会话名称'); return }; if (await updateSession(renaming, { title: title.trim() })) setRenaming(null) }}>
+      <Input aria-label="会话名称" value={title} onChange={e => setTitle(e.target.value)} maxLength={80} showCount />
+    </Modal></div>
   )
 }

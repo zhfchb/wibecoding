@@ -31,6 +31,7 @@ public class ChatController {
 
     private final ChatService chatService;
     private final RagChatService ragChatService;
+    private final com.example.agent.service.ChatSessionManager sessionManager;
 
     @Operation(summary = "简单对话(无 RAG)", description = "直接调 LLM,不检索知识库")
     @PostMapping("/simple")
@@ -68,7 +69,14 @@ public class ChatController {
     @Operation(summary = "会话列表", description = "返回所有会话的最后一条消息，按最后更新时间倒序")
     @GetMapping("/sessions")
     public List<ChatHistoryEntity> sessions() {
-        return ragChatService.listSessions();
+        return sessionManager.decorate(ragChatService.listSessions());
+    }
+
+    public record SessionUpdate(String title, Boolean pinned) {}
+
+    @org.springframework.web.bind.annotation.PatchMapping("/sessions/{sessionId}")
+    public void updateSession(@PathVariable String sessionId, @RequestBody SessionUpdate update) {
+        sessionManager.update(sessionId, update.title(), update.pinned());
     }
 
     /**
@@ -78,5 +86,6 @@ public class ChatController {
     @DeleteMapping("/sessions/{sessionId}")
     public void deleteSession(@PathVariable String sessionId) {
         ragChatService.deleteSession(sessionId);
+        sessionManager.delete(sessionId);
     }
 }

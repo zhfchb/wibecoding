@@ -57,6 +57,7 @@ export const chatApi = {
   // 会话列表（每个会话最后一条消息）
   sessions: () =>
     api.get('/chat/sessions'),
+  updateSession: (sessionId, data) => api.patch(`/chat/sessions/${encodeURIComponent(sessionId)}`, data),
   // 删除单个会话
   deleteSession: (sessionId) =>
     api.delete(`/chat/sessions/${sessionId}`),

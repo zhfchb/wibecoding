@@ -30,5 +30,11 @@ public class ChatHistoryEntity {
 
     private String sourcesJson;
 
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    private String title;
+
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    private boolean pinned;
+
     private LocalDateTime createdAt;
 }
