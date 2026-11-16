@@ -346,6 +346,7 @@ CREATE TABLE IF NOT EXISTS recruitment_position_activity (
 
 -- Additive interview assignments and private drafts; no automatic assignments.
 CREATE TABLE IF NOT EXISTS recruitment_interview_assignment (
+    round_no INT NOT NULL DEFAULT 1,
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     position_id BIGINT NOT NULL,
     resume_id BIGINT NOT NULL,

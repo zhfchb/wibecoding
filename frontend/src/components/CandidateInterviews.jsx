@@ -9,6 +9,7 @@ export default function CandidateInterviews({ positionId, resume }) {
   const [rows, setRows] = useState([])
   const [members, setMembers] = useState([])
   const [selected, setSelected] = useState(null)
+  const [roundNo, setRoundNo] = useState(1)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(false)
@@ -25,7 +26,7 @@ export default function CandidateInterviews({ positionId, resume }) {
     setSaving(true)
     try {
       if (assignment) await api.post(`/recruitment/interviews/${assignment.id}/revoke`)
-      else await api.post(`/recruitment/resumes/${resume.id}/interviews`, { interviewerId: selected })
+      else await api.post(`/recruitment/resumes/${resume.id}/interviews`, { interviewerId: selected, roundNo })
       setSelected(null); await load(); message.success(assignment ? '面试分配已撤销' : '已分配面试官')
     } catch(e) { message.error(e.response?.data?.message || '操作失败，请重试') }
     finally { setSaving(false) }
@@ -36,12 +37,14 @@ export default function CandidateInterviews({ positionId, resume }) {
       <Typography.Paragraph>面试官只查看获分配候选人的必要资料与已有面试题。评价草稿仅本人可见，提交后可在此查看；评价不自动改变HR筛选决策。历史岗位首次分配会确认当前公司归属。</Typography.Paragraph>
       {error ? <Alert type="error" message="面试分配加载失败" action={<Button onClick={load}>重试加载</Button>} /> : <>
         <Space wrap style={{ marginBottom: 16 }}>
+          <Select aria-label="面试轮次" value={roundNo} onChange={value => { setRoundNo(value); setSelected(null) }} disabled={loading || saving} style={{ width: 130 }} options={Array.from({ length: 10 }, (_, i) => ({ value: i + 1, label: `第${i + 1}轮` }))} />
           <Select aria-label="选择面试官" showSearch optionFilterProp="label" placeholder="选择本公司面试官" value={selected} onChange={setSelected} disabled={loading || saving} style={{ width: 240 }}
-            options={members.filter(m => !rows.some(a => a.interviewerId === m.userId && a.status !== 'REVOKED')).map(m => ({ value: m.userId, label: m.username }))} notFoundContent="暂无可分配面试官，请联系公司管理员新增成员" />
+            options={members.filter(m => !rows.some(a => a.interviewerId === m.userId && (a.roundNo || 1) === roundNo && a.status !== 'REVOKED')).map(m => ({ value: m.userId, label: m.username }))} notFoundContent="本轮暂无可分配面试官，请核对成员或切换轮次" />
           <Button type="primary" disabled={selected == null || loading || saving} loading={saving} onClick={() => mutate(null)}>确认分配</Button>
           <Button loading={loading} disabled={saving} onClick={load}>刷新分配</Button>
         </Space>
         <Table rowKey="id" size="small" loading={loading} dataSource={rows} pagination={false} scroll={{ x: 900 }} locale={{ emptyText: '尚未分配面试官' }} columns={[
+          { title: '轮次', dataIndex: 'roundNo', render: value => `第${value || 1}轮` },
           { title: '面试官', dataIndex: 'username' }, { title: '状态', dataIndex: 'status', render: s => <Tag>{states[s] || s}</Tag> },
           { title: '面试进度', dataIndex: 'flowStatus', render: value => interviewFlow[value] || '待排期' },
           { title: '时间与方式', width: 260, render: (_, row) => <><ScheduleInfo schedule={row.schedule} /><InterviewSchedule assignment={row} onChanged={load} /></> },

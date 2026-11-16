@@ -25,7 +25,7 @@ public class InterviewAssignmentService {
     private final ObjectMapper json;
     private final InterviewScheduleService schedules;
     public record Evaluation(Integer score,String recommendation,String strengths,String concerns,String summary,LocalDateTime submittedAt) {}
-    public record Assignment(Long id,Long positionId,Long resumeId,Long interviewerId,String username,String title,String candidateName,String status,Integer version,Evaluation evaluation,InterviewScheduleService.Schedule schedule,String flowStatus) {}
+    public record Assignment(Long id,Long positionId,Long resumeId,Long interviewerId,String username,String title,String candidateName,String status,Integer version,Evaluation evaluation,InterviewScheduleService.Schedule schedule,String flowStatus,Integer roundNo) {}
     public record EvaluationInput(Integer version,Integer score,String recommendation,String strengths,String concerns,String summary,boolean submit) {}
     public record PositionBrief(String title,String department,String city,List<String> requiredSkills,Integer minYears,String education,String description) {}
     public record CandidateBrief(String name,List<String> skills,Integer yearsExp,String education,String lastCompany) {}
@@ -51,7 +51,7 @@ public class InterviewAssignmentService {
             var evaluation=r.getObject("evaluation_id")==null || (!drafts && submitted==null)?null:
                     new Evaluation(r.getObject("score",Integer.class),r.getString("recommendation"),r.getString("strengths"),r.getString("concerns"),r.getString("summary"),submitted==null?null:submitted.toLocalDateTime());
             var schedule=InterviewScheduleService.fromAssignmentRow(r);
-            return new Assignment(r.getLong("id"),r.getLong("position_id"),r.getLong("resume_id"),r.getLong("interviewer_id"),r.getString("username"),r.getString("title"),r.getString("candidate_name"),r.getString("status"),r.getInt("version"),evaluation,schedule,schedules.flow(r.getString("status"),schedule));
+            return new Assignment(r.getLong("id"),r.getLong("position_id"),r.getLong("resume_id"),r.getLong("interviewer_id"),r.getString("username"),r.getString("title"),r.getString("candidate_name"),r.getString("status"),r.getInt("version"),evaluation,schedule,schedules.flow(r.getString("status"),schedule),r.getInt("round_no"));
         };
     }
     public List<Assignment> managed(Long positionId) {
@@ -83,6 +83,12 @@ public class InterviewAssignmentService {
     }
     @Transactional
     public Assignment assign(Long resumeId,Long interviewer) {
+        return assign(resumeId,interviewer,1);
+    }
+    @Transactional
+    public Assignment assign(Long resumeId,Long interviewer,Integer roundNo) {
+        int round = roundNo == null ? 1 : roundNo;
+        if (round < 1 || round > 10) throw new IllegalArgumentException("面试轮次须为1～10");
         var resume=access.resume(resumeId);
         var position=access.operator(resume.getPositionId(),access.user(),true);
         if("CLOSED".equals(position.getStatus())) throw new IllegalArgumentException("岗位已关闭，不能新增面试分配");
@@ -100,11 +106,11 @@ public class InterviewAssignmentService {
             if(active>0) throw new IllegalArgumentException("旧岗位有进行中任务，请结束后再确认公司归属并分配面试官");
             db.update("UPDATE job_position SET company_id=? WHERE id=?",company.id(),position.getId());
         }
-        var existing=db.query(BASE+" WHERE a.resume_id=? AND a.interviewer_id=? AND a.status<>'REVOKED' FOR UPDATE",row(false),resumeId,interviewer);
+        var existing=db.query(BASE+" WHERE a.resume_id=? AND a.interviewer_id=? AND a.round_no=? AND a.status<>'REVOKED' FOR UPDATE",row(false),resumeId,interviewer,round);
         if(!existing.isEmpty()) return existing.get(0);
-        db.update("INSERT INTO recruitment_interview_assignment(position_id,resume_id,interviewer_id,assigned_by,status,version,created_at,updated_at) VALUES (?,?,?,?,'ASSIGNED',0,?,?)",
-                position.getId(),resumeId,interviewer,access.user(),LocalDateTime.now(),LocalDateTime.now());
-        var assigned=db.query(BASE+" WHERE a.resume_id=? AND a.interviewer_id=? AND a.status='ASSIGNED'",row(false),resumeId,interviewer).get(0);
+        db.update("INSERT INTO recruitment_interview_assignment(position_id,resume_id,interviewer_id,assigned_by,status,version,created_at,updated_at,round_no) VALUES (?,?,?,?,'ASSIGNED',0,?,?,?)",
+                position.getId(),resumeId,interviewer,access.user(),LocalDateTime.now(),LocalDateTime.now(),round);
+        var assigned=db.query(BASE+" WHERE a.resume_id=? AND a.interviewer_id=? AND a.round_no=? AND a.status='ASSIGNED'",row(false),resumeId,interviewer,round).get(0);
         activity.log(position.getId(),access.user(),"INTERVIEW_ASSIGNED",assigned.id().toString());return assigned;
     }
     private Long positionId(Long id) {

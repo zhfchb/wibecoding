@@ -37,7 +37,7 @@ def handler(owner):
             route.fulfill(json=rows); return
         if path.endswith('/resumes/10/interviews'):
             assert owner and method == 'POST'
-            assert route.request.post_data_json == {'interviewerId': 2}
+            assert route.request.post_data_json == {'interviewerId': 2, 'roundNo': 1}
             state['assignment'] = {'id': 7, 'positionId': 1, 'resumeId': 10, 'interviewerId': 2, 'username': '技术面试官', 'title': 'Java面试岗位', 'candidateName': '候选人甲', 'status': 'ASSIGNED', 'version': 0, 'evaluation': None}
             route.fulfill(json=state['assignment']); return
         if path.endswith('/interviews/7/revoke'):

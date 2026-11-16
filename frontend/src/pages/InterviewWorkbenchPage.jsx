@@ -97,6 +97,7 @@ export default function InterviewWorkbenchPage() {
       {error && <Alert type="warning" message={error} style={{ marginBottom: 16 }} />}
       <Select aria-label="按面试任务筛选" value={taskFilter} onChange={setTaskFilter} style={{ width: 220, marginBottom: 16 }} options={[{ value: 'ALL', label: '全部面试任务' }, ...Object.entries(groups).map(([value, label]) => ({ value, label }))]} />
       <Table rowKey="id" loading={loading} dataSource={filteredRows} scroll={{ x: 600 }} locale={{ emptyText: <Empty description={rows.length ? '没有符合筛选条件的面试' : '暂无面试安排，请联系招聘负责人分配候选人'} /> }} columns={[
+        { title: '轮次', dataIndex: 'roundNo', render: value => `第${value || 1}轮` },
         { title: '岗位', dataIndex: 'title' }, { title: '候选人', dataIndex: 'candidateName' },
         { title: '时间与方式', width: 260, render: (_, row) => <ScheduleInfo schedule={row.schedule} /> },
         { title: '面试进度', dataIndex: 'flowStatus', render: value => interviewFlow[value] || '待排期' },

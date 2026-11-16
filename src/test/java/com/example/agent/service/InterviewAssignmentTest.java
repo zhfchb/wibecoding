@@ -62,6 +62,21 @@ class InterviewAssignmentTest {
     }
     @AfterEach void cleanup() { SecurityContextHolder.clearContext(); }
     long assign() { login(owner);return interviews.assign(resume,interviewer).id(); }
+
+    @Test void roundsRemainIndependentAndDuplicateAssignmentIsReused() {
+        login(owner);
+        var first = interviews.assign(resume,interviewer,1);
+        var secondRound = interviews.assign(resume,interviewer,2);
+        assertThat(secondRound.id()).isNotEqualTo(first.id());
+        assertThat(secondRound.roundNo()).isEqualTo(2);
+        assertThat(interviews.assign(resume,interviewer,2).id()).isEqualTo(secondRound.id());
+        assertThatThrownBy(() -> interviews.assign(resume,interviewer,0)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> interviews.assign(resume,interviewer,11)).isInstanceOf(IllegalArgumentException.class);
+        login(interviewer);
+        interviews.save(first.id(),input(0,true,"首轮评价"));
+        assertThat(interviews.detail(secondRound.id()).assignment().status()).isEqualTo("ASSIGNED");
+        assertThat(interviews.detail(secondRound.id()).assignment().evaluation()).isNull();
+    }
     InterviewAssignmentService.EvaluationInput input(int version,boolean submit,String summary) {
         return new InterviewAssignmentService.EvaluationInput(version,4,"PASS","有具体证据","待核实细节",summary,submit);
     }
