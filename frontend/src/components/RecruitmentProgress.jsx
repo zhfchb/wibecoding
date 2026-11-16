@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import { Alert, Button, Card, Input, Select, Space, Table, Tag, Typography } from 'antd'
 import api from '../api'
 import CandidateOutcome from './CandidateOutcome'
+import CandidateNotes from './CandidateNotes'
 
 const labels = { PENDING: '待定', HIRED: '录用', REJECTED: '淘汰', WITHDRAWN: '候选人退出' }
-export default function RecruitmentProgress({ positionId, canOperate, revision }) {
+export default function RecruitmentProgress({ positionId, canOperate, canManage, revision }) {
   const [rows, setRows] = useState([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(false)
@@ -51,6 +52,7 @@ export default function RecruitmentProgress({ positionId, canOperate, revision }
         { title: '归档状态', dataIndex: 'archived', render: value => value ? '已归档' : '未归档' },
         { title: '已提交评价', dataIndex: 'submittedEvaluations' },
         { title: '结果记录', render: (_, row) => <CandidateOutcome resume={row} canOperate={canOperate} onChanged={load} /> },
+        { title: '跟进协作', render: (_, row) => <CandidateNotes resume={row} canOperate={canOperate} canManage={canManage} /> },
       ]} />
     </>}
   </Card>

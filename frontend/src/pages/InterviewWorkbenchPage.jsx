@@ -105,7 +105,7 @@ export default function InterviewWorkbenchPage() {
         { title: '操作', render: (_, row) => <Button type="link" loading={opening} onClick={() => show(row.id)}>{row.status === 'SUBMITTED' ? '查看评价' : '准备面试与评价'}</Button> },
       ]} />
     </Card>
-    <Modal title={`面试准备 · ${detail?.candidate.name || ''}`} open={!!detail} onCancel={close} width={800} footer={detail && <Space wrap>
+    <Modal title={`面试准备 · ${detail?.candidate.name || ''} · 第${detail?.assignment.roundNo || 1}轮`} open={!!detail} onCancel={close} width={800} footer={detail && <Space wrap>
       <Button disabled={saving} onClick={() => dirty ? Modal.confirm({ title: '重新加载会丢弃未保存的内容，是否继续？', onOk: () => show(detail.assignment.id), okText: '重新加载', cancelText: '取消' }) : show(detail.assignment.id)}>重新加载</Button>
       {!submitted && <><Button disabled={saving || conflict || scheduleBlocked} onClick={() => save(false)}>保存草稿</Button><Button type="primary" disabled={saving || conflict || scheduleBlocked || !!notEnded} loading={saving} onClick={() => save(true)}>提交评价</Button></>}
     </Space>}>

@@ -35,6 +35,7 @@ export default function CandidateInterviews({ positionId, resume }) {
     <Button type="link" size="small" onClick={() => { setOpen(true); load() }}>分配面试</Button>
     <Modal title={`面试分配 · ${resume.candidateName || '候选人'}`} open={open} footer={null} width={700} onCancel={() => { if (!saving) setOpen(false) }}>
       <Typography.Paragraph>面试官只查看获分配候选人的必要资料与已有面试题。评价草稿仅本人可见，提交后可在此查看；评价不自动改变HR筛选决策。历史岗位首次分配会确认当前公司归属。</Typography.Paragraph>
+      <Typography.Paragraph type="secondary">先选择轮次，再分配本轮面试官与时间；不同轮次独立保存评价，轮次不自动晋级。汇总意见请在候选人的“跟进与汇总”中记录。</Typography.Paragraph>
       {error ? <Alert type="error" message="面试分配加载失败" action={<Button onClick={load}>重试加载</Button>} /> : <>
         <Space wrap style={{ marginBottom: 16 }}>
           <Select aria-label="面试轮次" value={roundNo} onChange={value => { setRoundNo(value); setSelected(null) }} disabled={loading || saving} style={{ width: 130 }} options={Array.from({ length: 10 }, (_, i) => ({ value: i + 1, label: `第${i + 1}轮` }))} />

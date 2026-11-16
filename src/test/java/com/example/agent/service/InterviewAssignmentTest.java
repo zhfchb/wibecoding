@@ -28,6 +28,7 @@ class InterviewAssignmentTest {
     @Autowired CompanyService companies;
     @Autowired RecruitmentService recruitment;
     @Autowired InterviewAssignmentService interviews;
+    @Autowired CandidateNoteService notes;
     @Autowired PositionCollaborationService grants;
     @Autowired JdbcTemplate db;
     @Autowired MockMvc mvc;
@@ -62,6 +63,36 @@ class InterviewAssignmentTest {
     }
     @AfterEach void cleanup() { SecurityContextHolder.clearContext(); }
     long assign() { login(owner);return interviews.assign(resume,interviewer).id(); }
+
+    @Test void candidateNotesRespectRoleAndRetryBoundaries() {
+        login(owner);
+        var next=java.time.Instant.now().plusSeconds(3600).truncatedTo(java.time.temporal.ChronoUnit.MILLIS);
+        var input=new CandidateNoteService.Input("FOLLOWUP","已确认候选人意向",next,"followup_request_1");
+        notes.append(resume,input);notes.append(resume,input);
+        assertThat(notes.list(resume,1,10).total()).isEqualTo(1);
+        assertThatThrownBy(() -> notes.append(resume,new CandidateNoteService.Input("FOLLOWUP","不同内容",next,"followup_request_1"))).isInstanceOf(ResponseStatusException.class);
+        login(editor);
+        notes.append(resume,new CandidateNoteService.Input("FOLLOWUP","补充沟通",null,"followup_request_2"));
+        assertThatThrownBy(() -> notes.append(resume,new CandidateNoteService.Input("REVIEW_SUMMARY","越权汇总",null,"review_request_1"))).isInstanceOf(ResponseStatusException.class);
+        login(viewer);
+        assertThat(notes.list(resume,1,1).records()).hasSize(1);
+        assertThat(notes.list(resume,1,1).total()).isEqualTo(2);
+        assertThatThrownBy(() -> notes.append(resume,input)).isInstanceOf(ResponseStatusException.class);
+        login(interviewer);
+        assertThatThrownBy(() -> notes.list(resume,1,10)).isInstanceOf(ResponseStatusException.class);
+    }
+
+    @Test void ownerSummaryIsAppendOnlyAndDoesNotChangeRecruitmentDecisions() {
+        login(owner);
+        notes.append(resume,new CandidateNoteService.Input("REVIEW_SUMMARY","根据已提交意见仍需核实职责",null,"summary_request_1"));
+        notes.append(resume,new CandidateNoteService.Input("REVIEW_SUMMARY","补充核实结果",null,"summary_request_2"));
+        assertThat(notes.list(resume,1,10).total()).isEqualTo(2);
+        assertThat(db.queryForObject("SELECT hr_decision FROM match_result WHERE resume_id=?",String.class,resume)).isEqualTo("PENDING");
+        assertThatThrownBy(() -> notes.append(resume,new CandidateNoteService.Input("FOLLOWUP"," ",null,"empty_request_1"))).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> notes.append(resume,new CandidateNoteService.Input("FOLLOWUP","已过期时间",java.time.Instant.EPOCH,"past_request_1"))).isInstanceOf(IllegalArgumentException.class);
+        recruitment.deleteResume(resume);
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM recruitment_candidate_note WHERE resume_id=?",Long.class,resume)).isZero();
+    }
 
     @Test void roundsRemainIndependentAndDuplicateAssignmentIsReused() {
         login(owner);

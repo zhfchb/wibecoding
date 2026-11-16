@@ -148,6 +148,7 @@ public class InterviewAssignmentService {
         return detail(id);
     }
     public void cleanupForResume(Long resumeId) {
+        db.update("DELETE FROM recruitment_candidate_note WHERE resume_id=?",resumeId);
         schedules.cleanup(resumeId);
         db.update("DELETE FROM recruitment_interview_evaluation WHERE assignment_id IN (SELECT id FROM recruitment_interview_assignment WHERE resume_id=?)",resumeId);
         db.update("DELETE FROM recruitment_interview_assignment WHERE resume_id=?",resumeId);
