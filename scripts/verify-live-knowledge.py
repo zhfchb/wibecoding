@@ -19,6 +19,7 @@ def main():
     parser.add_argument('--base',default='http://127.0.0.1:18080')
     parser.add_argument('--ui',default='http://127.0.0.1:5173')
     parser.add_argument('--resume',type=Path)
+    parser.add_argument('--batch',action='store_true')
     args=parser.parse_args()
     if any(urlparse(url).hostname not in ('127.0.0.1','localhost') for url in (args.base,args.ui)):
         parser.error('Local deployment only')
@@ -53,6 +54,14 @@ def main():
             page.goto(args.ui+'/knowledge');page.wait_for_load_state('networkidle')
             existing=api('GET','/knowledge/documents?page=1&size=100',token=token)['records']
             by_name={row['fileName']:row for row in existing}
+            if args.batch:
+                missing=[file for file in files if file.name not in by_name]
+                if missing:
+                    print('Uploading real batch of '+str(len(missing))+' materials',flush=True)
+                    page.locator('input[type=file]').set_input_files([str(file) for file in missing])
+                    expect(page.get_by_text('成功',exact=True)).to_have_count(len(missing),timeout=300000)
+                existing=api('GET','/knowledge/documents?page=1&size=100',token=token)['records']
+                by_name={row['fileName']:row for row in existing}
             for file in files:
                 if file.name in by_name:
                     state['uploaded'][file.name]=by_name[file.name]['documentId'];save();continue
@@ -62,7 +71,7 @@ def main():
                 response=response_info.value
                 if response.status!=200:raise RuntimeError('Material '+file.name[:2]+' upload failed, HTTP '+str(response.status))
                 result=response.json();assert result['chunkCount']>0
-                expect(page.get_by_role('cell',name=file.name,exact=True)).to_be_visible(timeout=15000)
+                expect(page.locator('.ant-card').filter(has=page.get_by_text('我的参考资料',exact=True)).get_by_role('cell',name=file.name,exact=True)).to_be_visible(timeout=15000)
                 state['uploaded'][file.name]=result['documentId'];save()
                 print('PASS material '+file.name[:2],flush=True)
             assert len(state['uploaded'])==7
@@ -75,8 +84,38 @@ def main():
                 assert answer.get('sources'),'No RAG source'
                 assert any('02-' in source.get('fileName','') for source in answer['sources']),'Java job source missing'
                 state['rag']=answer;save()
+            if args.batch:
+                session=state['username']+'-check'
+                page.evaluate('(sid) => localStorage.setItem("currentSessionId",sid)',session)
+                page.goto(args.ui+'/chat');page.wait_for_load_state('networkidle')
+                expect(page.locator('summary').first).to_contain_text('.md')
+                page.locator('summary').first.click()
+                expect(page.locator('details[open] div')).not_to_be_empty()
+                page.get_by_role('button',name='重命名会话',exact=True).click()
+                page.get_by_role('textbox',name='会话名称').fill('真实批量上传验收')
+                page.get_by_role('button',name=re.compile('保.*存')).click()
+                expect(page.get_by_text('真实批量上传验收',exact=True)).to_be_visible()
+                if page.get_by_role('button',name='置顶会话',exact=True).count():
+                    page.get_by_role('button',name='置顶会话',exact=True).click()
+                expect(page.get_by_role('button',name='取消置顶',exact=True)).to_be_visible()
+                page.reload();page.wait_for_load_state('networkidle')
+                expect(page.get_by_text('真实批量上传验收',exact=True)).to_be_visible()
+                expect(page.get_by_role('button',name='取消置顶',exact=True)).to_be_visible()
+                previous=page.locator('summary').count()
+                page.get_by_placeholder('输入问题，回车发送（Shift+回车换行）').fill('Java岗位不会Redis就应该直接淘汰吗？请根据资料回答。')
+                with page.expect_response(lambda r:r.url.endswith('/chat/stream'),timeout=120000):
+                    page.get_by_role('button',name=re.compile('发.*送')).click()
+                expect(page.get_by_role('button',name=re.compile('发.*送'))).not_to_have_class(re.compile('ant-btn-loading'),timeout=180000)
+                assert page.locator('summary').count()>previous,'Stream source cards missing'
+                expected=page.locator('summary').count()
+                page.reload();page.wait_for_load_state('networkidle')
+                expect(page.locator('summary')).to_have_count(expected)
+                expect(page.get_by_text('真实批量上传验收',exact=True)).to_be_visible()
+                page.screenshot(path=str(path.parent/'chat-sources-and-session.png'),full_page=True)
+                state['batchAndChatUiPassed']=True;save()
             state['passed']=True;save()
             report=dict(passed=True,mocked=False,uploadedFiles=7,fourthMaterialPassed=True,noDuplicateDocuments=True,ragSources=len(state['rag']['sources']))
+            report['batchAndChatUiPassed']=state.get('batchAndChatUiPassed',False)
             (path.parent/'report.json').write_text(json.dumps(report,indent=2),encoding='utf-8')
             (path.parent/'test-account.txt').write_text('UI: '+args.ui+'\nUsername: '+state['username']+'\nPassword: '+state['password']+'\n',encoding='utf-8')
             print('PASS live library upload: all 7 materials, file 04, unique documents, sourced RAG',flush=True)

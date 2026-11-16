@@ -21,6 +21,8 @@
 | 11 | [20261108_interview_scheduling.sql](20261108_interview_scheduling.sql) | 排期与历史 |
 | 12 | [20261108_candidate_outcomes.sql](20261108_candidate_outcomes.sql) | 招聘结果与历史 |
 | 13 | [20261109_document_lifecycle.sql](20261109_document_lifecycle.sql) | 文档上传租约、向量清理与失败重试 |
+| 14 | [20261116_chat_sources.sql](20261116_chat_sources.sql) | 回答引用来源持久化；旧答案不补造来源 |
+| 15 | [20261116_chat_sessions.sql](20261116_chat_sessions.sql) | 会话自定义名称与置顶，按用户隔离 |
 
 按数据库已完成的升级选择缺失脚本，保持依赖顺序；不要按文件名简单排序。脚本设计为可重复执行，但MySQL DDL可能隐式提交，失败后应检查已执行结果再恢复，不假设整批可以事务回滚。
 
@@ -42,7 +44,9 @@ $migrationFiles = @(
   '20261108_interview_assignments.sql',
   '20261108_interview_scheduling.sql',
   '20261108_candidate_outcomes.sql',
-  '20261109_document_lifecycle.sql'
+  '20261109_document_lifecycle.sql',
+  '20261116_chat_sources.sql',
+  '20261116_chat_sessions.sql'
 )
 foreach ($migrationFile in $migrationFiles) {
   Get-Content (Join-Path 'deploy/migrations' $migrationFile) -Raw |

@@ -1,6 +1,6 @@
 # 文档导航
 
-后续需求：[开发待办](product/开发待办.md)，包含尚未开发的资料库批量上传。
+用户反馈与完成状态：[开发待办](product/开发待办.md)。本轮结果：[资料库体验升级验收](acceptance/LIBRARY_IMPROVEMENTS_20261116.md)，包含批量上传、问答来源、会话置顶/重命名与审核Markdown排版。
 
 最新问题修复：[招聘资料库上传中断恢复](acceptance/KNOWLEDGE_UPLOAD_RECOVERY.md)，包含连接断开、有限重试、错误提示及第4份学习素材复测。
 
