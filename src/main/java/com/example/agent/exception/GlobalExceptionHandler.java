@@ -1,5 +1,6 @@
 package com.example.agent.exception;
 
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -8,8 +9,6 @@ import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
-
-import java.util.stream.Collectors;
 
 @Slf4j
 @RestControllerAdvice
@@ -20,20 +19,20 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).header("Retry-After", "2")
                 .body(ApiErrorResponse.of(503, "VECTOR_STORE_UNAVAILABLE", ex.getMessage()));
     }
-    @ExceptionHandler(com.example.agent.service.company.InterviewScheduleConflict.class)
-    public ResponseEntity<ApiErrorResponse> handleInterviewSchedule(com.example.agent.service.company.InterviewScheduleConflict ex) {
+    @ExceptionHandler(com.example.agent.interview.service.InterviewScheduleConflict.class)
+    public ResponseEntity<ApiErrorResponse> handleInterviewSchedule(com.example.agent.interview.service.InterviewScheduleConflict ex) {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiErrorResponse.of(409,ex.code(),ex.getMessage()));
     }
-    @ExceptionHandler(com.example.agent.service.materials.MaterialFailure.class)
-    public ResponseEntity<ApiErrorResponse> handleMaterial(com.example.agent.service.materials.MaterialFailure ex) {
+    @ExceptionHandler(com.example.agent.interview.materials.MaterialFailure.class)
+    public ResponseEntity<ApiErrorResponse> handleMaterial(com.example.agent.interview.materials.MaterialFailure ex) {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiErrorResponse.of(409,ex.code(),ex.getMessage()));
     }
-    @ExceptionHandler(com.example.agent.service.resumes.ResumeParseFailure.class)
-    public ResponseEntity<ApiErrorResponse> handleResumeParse(com.example.agent.service.resumes.ResumeParseFailure ex) {
+    @ExceptionHandler(com.example.agent.recruitment.resumes.ResumeParseFailure.class)
+    public ResponseEntity<ApiErrorResponse> handleResumeParse(com.example.agent.recruitment.resumes.ResumeParseFailure ex) {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiErrorResponse.of(409,ex.code(),ex.getMessage()));
     }
-    @ExceptionHandler(com.example.agent.service.matching.MatchTaskFailure.class)
-    public ResponseEntity<ApiErrorResponse> handleMatchTask(com.example.agent.service.matching.MatchTaskFailure ex) {
+    @ExceptionHandler(com.example.agent.recruitment.matching.MatchTaskFailure.class)
+    public ResponseEntity<ApiErrorResponse> handleMatchTask(com.example.agent.recruitment.matching.MatchTaskFailure ex) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(ApiErrorResponse.of(409, ex.code(), ex.getMessage()));
     }

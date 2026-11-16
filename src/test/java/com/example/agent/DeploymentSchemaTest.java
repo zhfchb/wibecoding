@@ -1,9 +1,9 @@
 package com.example.agent;
-import org.junit.jupiter.api.Test;
+
 import java.nio.file.*;
 import java.sql.DriverManager;
+import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.*;
-
 class DeploymentSchemaTest {
     String normalize(String sql) {return sql.replaceAll("--[^\\n]*","").replaceAll("\\s+"," ").strip();}
     @Test void productionUsesMysqlCompatibleSchemaAndMatchesApplicationStructure() throws Exception {

@@ -1,0 +1,112 @@
+package com.example.agent.recruitment.access;
+
+import com.example.agent.recruitment.entity.CandidateResumeEntity;
+import com.example.agent.recruitment.entity.JobPositionEntity;
+import com.example.agent.recruitment.mapper.CandidateResumeMapper;
+import com.example.agent.recruitment.mapper.JobPositionMapper;
+import com.example.agent.security.SecurityUtils;
+import java.util.List;
+import java.util.Objects;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
+
+/** Explicit grants only. Company or system administrators have no implicit access. */
+@Service
+@RequiredArgsConstructor
+public class PositionAccess {
+    private final JdbcTemplate db;
+    private final JobPositionMapper positions;
+    private final CandidateResumeMapper resumes;
+    private static final String GRANTED = """
+        EXISTS (SELECT 1 FROM recruitment_position_viewer v
+          JOIN recruitment_company_member reader_member ON reader_member.user_id=v.user_id AND reader_member.company_id=p.company_id AND reader_member.role IN ('ADMIN','HR')
+          JOIN recruitment_company_member creator_member ON creator_member.user_id=p.user_id AND creator_member.company_id=p.company_id
+          WHERE v.position_id=p.id AND v.user_id=? AND v.granted_by=p.user_id AND v.permission IN ('VIEWER','EDITOR'))
+        """;
+
+    public Long user() {
+        Long id=SecurityUtils.getCurrentUserId();
+        if(id==null) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
+        return id;
+    }
+    public boolean manages(JobPositionEntity position) {
+        return position!=null && SecurityUtils.getCurrentUserId()!=null && Objects.equals(position.getUserId(),SecurityUtils.getCurrentUserId()) && recruiter(SecurityUtils.getCurrentUserId());
+    }
+    private boolean recruiter(Long actor) {
+        return !db.queryForList("SELECT role FROM recruitment_company_member WHERE user_id=?",String.class,actor).contains("INTERVIEWER");
+    }
+    public void ensureRecruiter() {
+        if(!recruiter(user())) throw new ResponseStatusException(HttpStatus.FORBIDDEN);
+    }
+    public JobPositionEntity owned(Long id) {
+        user();var position=positions.selectById(id);
+        if(!manages(position)) throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        return position;
+    }
+    public JobPositionEntity lockOwned(Long id) {
+        user();var position=positions.lockById(id);
+        if(!manages(position)) throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        return position;
+    }
+    public boolean operates(JobPositionEntity position) {
+        return "OWNER".equals(permission(position,user())) || "EDITOR".equals(permission(position,user()));
+    }
+    public String permission(JobPositionEntity position,Long actor) {
+        return permission(position,actor,false);
+    }
+    private String permission(JobPositionEntity position,Long actor,boolean lock) {
+        if(position==null || actor==null || !recruiter(actor)) return null;
+        if(Objects.equals(position.getUserId(),actor)) return "OWNER";
+        if(lock) {
+            // A transaction may have started a repeatable-read snapshot before waiting on the job.
+            // Read the grant itself currently, without locking shared company member rows across jobs.
+            var current=db.queryForList("SELECT permission FROM recruitment_position_viewer WHERE position_id=? AND user_id=? AND granted_by=? FOR UPDATE",
+                    String.class,position.getId(),actor,position.getUserId());
+            if(current.isEmpty()) return null;
+            long membership=db.queryForObject("""
+                SELECT COUNT(*) FROM recruitment_company_member a JOIN recruitment_company_member c ON c.company_id=a.company_id
+                WHERE a.user_id=? AND a.company_id=? AND a.role IN ('ADMIN','HR') AND c.user_id=? AND c.role IN ('ADMIN','HR')
+                """,Long.class,actor,position.getCompanyId(),position.getUserId());
+            return membership==0?null:current.get(0);
+        }
+        var roles=db.queryForList("""
+            SELECT v.permission FROM recruitment_position_viewer v
+            JOIN recruitment_company_member a ON a.user_id=v.user_id AND a.company_id=? AND a.role IN ('ADMIN','HR')
+            JOIN recruitment_company_member c ON c.user_id=? AND c.company_id=a.company_id
+            WHERE v.position_id=? AND v.user_id=? AND v.granted_by=?
+            """,String.class,position.getCompanyId(),position.getUserId(),position.getId(),actor,position.getUserId());
+        return roles.isEmpty()?null:roles.get(0);
+    }
+    public JobPositionEntity operator(Long id,Long actor,boolean lock) {
+        var position=lock?positions.lockById(id):positions.selectById(id);
+        String permission=permission(position,actor,lock);
+        if(!"OWNER".equals(permission) && !"EDITOR".equals(permission)) throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        return position;
+    }
+    public List<Long> visibleIds() {
+        Long user=user();
+        if(!recruiter(user)) return List.of();
+        return db.queryForList("SELECT p.id FROM job_position p WHERE p.user_id=? OR "+GRANTED,Long.class,user,user);
+    }
+    public JobPositionEntity readable(Long id) {
+        Long user=user();var position=positions.selectById(id);
+        if(position==null) throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        if(!manages(position) && db.queryForObject("SELECT COUNT(*) FROM job_position p WHERE p.id=? AND "+GRANTED,Long.class,id,user)==0)
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        return position;
+    }
+    public CandidateResumeEntity resume(Long id) {
+        user();var resume=resumes.selectById(id);
+        if(resume==null) throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        var position=readable(resume.getPositionId());
+        if(!Objects.equals(position.getUserId(),resume.getUserId())) throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        return resume;
+    }
+    public void removeGrants(Long id) {
+        owned(id);
+        db.update("DELETE FROM recruitment_position_viewer WHERE position_id=?",id);
+    }
+}

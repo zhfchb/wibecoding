@@ -1,5 +1,7 @@
 package com.example.agent.exception;
 
+
+
 /** A bounded retry of an idempotent vector-store request did not recover transport access. */
 public class VectorStoreUnavailableException extends RuntimeException {
     public VectorStoreUnavailableException(Throwable cause) {

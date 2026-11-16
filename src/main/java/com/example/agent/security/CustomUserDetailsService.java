@@ -1,8 +1,9 @@
 package com.example.agent.security;
 
-import com.example.agent.entity.UserEntity;
-import com.example.agent.mapper.UserMapper;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.example.agent.security.entity.UserEntity;
+import com.example.agent.security.mapper.UserMapper;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.User;
@@ -10,8 +11,6 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
-
-import java.util.List;
 
 /**
  * 从 MySQL 加载用户,供 Spring Security 认证用

@@ -95,7 +95,7 @@ springdoc:
     path: /swagger-ui.html
     operations-sorter: method   # 接口按 HTTP 方法排序
     tags-sorter: alpha          # 分组按字母排序
-  packages-to-scan: com.example.agent.controller
+  packages-to-scan: com.example.agent
 ai:
   service:
     base-url: ${AI_SERVICE_BASE_URL:http://localhost:8000}
