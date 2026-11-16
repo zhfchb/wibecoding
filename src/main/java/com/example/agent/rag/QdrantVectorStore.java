@@ -4,12 +4,16 @@ import com.fasterxml.jackson.databind.JsonNode;
 import org.springframework.http.MediaType;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
+import org.springframework.web.client.ResourceAccessException;
+import com.example.agent.exception.VectorStoreUnavailableException;
+import java.util.function.Supplier;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+@lombok.extern.slf4j.Slf4j
 public class QdrantVectorStore implements VectorStore {
 
     private static final String DENSE_NAME = "dense";
@@ -18,20 +22,51 @@ public class QdrantVectorStore implements VectorStore {
     private final String collectionName;
     private final int dimension;
     private final RestClient restClient;
+    private boolean collectionReady;
 
     public QdrantVectorStore(String baseUrl, String collectionName, int dimension) {
+        this(client(baseUrl), collectionName, dimension);
+    }
+
+    QdrantVectorStore(RestClient restClient, String collectionName, int dimension) {
         this.collectionName = collectionName;
         this.dimension = dimension;
-        var factory = new org.springframework.http.client.SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout(3000);
-        factory.setReadTimeout(15000);
-        this.restClient = RestClient.builder().baseUrl(baseUrl).requestFactory(factory).build();
+        this.restClient = restClient;
+    }
+
+    private static RestClient client(String baseUrl) {
+        var http = java.net.http.HttpClient.newBuilder()
+                .connectTimeout(java.time.Duration.ofSeconds(3))
+                .version(java.net.http.HttpClient.Version.HTTP_1_1).build();
+        var factory = new org.springframework.http.client.JdkClientHttpRequestFactory(http);
+        factory.setReadTimeout(java.time.Duration.ofSeconds(15));
+        return RestClient.builder().baseUrl(baseUrl).requestFactory(factory).build();
+    }
+
+    private <T> T transport(String operation, Supplier<T> request) {
+        for (int attempt = 0; ; attempt++) {
+            try { return request.get(); }
+            catch (ResourceAccessException failure) {
+                if (attempt == 1) throw new VectorStoreUnavailableException(failure);
+                log.warn("Qdrant transport interrupted; retrying once: operation={}", operation);
+            }
+        }
+    }
+
+    private <T> T collectionRequest(String operation, Supplier<T> request) {
+        ensureCollection();
+        try { return transport(operation, request); }
+        catch (RestClientResponseException failure) {
+            if (failure.getStatusCode().value() != 404) throw failure;
+            // A previously checked collection may have been removed/recreated externally.
+            collectionReady = false;
+            ensureCollection();
+            return transport(operation, request);
+        }
     }
 
     @Override
     public synchronized void add(ChunkRecord chunk) {
-        ensureCollection();
-
         Map<String, Object> vector = new LinkedHashMap<>();
         vector.put(DENSE_NAME, toList(chunk.vector()));
         if (chunk.sparseVector() != null && !chunk.sparseVector().isEmpty()) {
@@ -53,12 +88,12 @@ public class QdrantVectorStore implements VectorStore {
                 "payload", payload);
         Map<String, Object> body = Map.of("points", List.of(point));
 
-        restClient.put()
+        collectionRequest("upsert_points", () -> restClient.put()
                 .uri("/collections/{collection}/points?wait=true", collectionName)
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(body)
                 .retrieve()
-                .toBodilessEntity();
+                .toBodilessEntity());
     }
 
     @Override
@@ -73,8 +108,6 @@ public class QdrantVectorStore implements VectorStore {
                                                  double minScore,
                                                  int rrfK,
                                                  Long userId) {
-        ensureCollection();
-
         // 用 LinkedHashMap 以便条件性添加 filter
         Map<String, Object> body = new LinkedHashMap<>();
         if (sparseVector == null || sparseVector.isEmpty()) {
@@ -110,12 +143,12 @@ public class QdrantVectorStore implements VectorStore {
             body.put("filter", filter);
         }
 
-        JsonNode root = restClient.post()
+        JsonNode root = collectionRequest("query_points", () -> restClient.post()
                 .uri("/collections/{collection}/points/query", collectionName)
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(body)
                 .retrieve()
-                .body(JsonNode.class);
+                .body(JsonNode.class));
 
         // RRF scores are rank-fusion values, not cosine similarities. The
         // cosine threshold was already applied to dense prefetch above.
@@ -128,15 +161,29 @@ public class QdrantVectorStore implements VectorStore {
         Map<String, Object> match = Map.of("key", "document_id", "match", Map.of("value", documentId));
         Map<String, Object> body = Map.of("filter", Map.of("must", List.of(match)));
 
-        restClient.post()
+        try {
+            transport("delete_points", () -> restClient.post()
                 .uri("/collections/{collection}/points/delete?wait=true", collectionName)
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(body)
                 .retrieve()
-                .toBodilessEntity();
+                .toBodilessEntity());
+        } catch (RestClientResponseException failure) {
+            if (failure.getStatusCode().value() != 404) throw failure;
+            collectionReady = false; // No collection means no remaining points to delete.
+        }
     }
 
     private void ensureCollection() {
+        if (collectionReady) return;
+        try {
+            transport("check_collection", () -> restClient.get()
+                    .uri("/collections/{collection}", collectionName).retrieve().toBodilessEntity());
+            collectionReady = true;
+            return;
+        } catch (RestClientResponseException failure) {
+            if (failure.getStatusCode().value() != 404) throw failure;
+        }
         // 命名稠密向量 dense + 稀疏向量 sparse，支持原生混合检索
         Map<String, Object> body = Map.of(
                 "vectors", Map.of(DENSE_NAME, Map.of(
@@ -144,17 +191,18 @@ public class QdrantVectorStore implements VectorStore {
                         "distance", "Cosine")),
                 "sparse_vectors", Map.of(SPARSE_NAME, Map.of()));
         try {
-            restClient.put()
+            transport("create_collection", () -> restClient.put()
                     .uri("/collections/{collection}", collectionName)
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(body)
                     .retrieve()
-                    .toBodilessEntity();
+                    .toBodilessEntity());
         } catch (RestClientResponseException e) {
             if (e.getStatusCode().value() != 409) {
                 throw e;
             }
         }
+        collectionReady = true;
     }
 
     private List<VectorMatch> parseQueryResult(JsonNode root, double minScore, int topK) {

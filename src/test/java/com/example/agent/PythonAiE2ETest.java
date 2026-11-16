@@ -120,6 +120,10 @@ class PythonAiE2ETest {
         var builder = new ProcessBuilder(System.getenv("AI_TEST_PYTHON"), "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", String.valueOf(AI_PORT));
         builder.directory(Path.of("ai-service").toFile());
         var env = builder.environment();
+        // Local fake providers must bypass inherited OS proxy routing, including Windows settings.
+        for (String name : List.of("HTTP_PROXY","HTTPS_PROXY","ALL_PROXY","http_proxy","https_proxy","all_proxy","VECTOR_PROXY_URL")) env.remove(name);
+        env.put("NO_PROXY","127.0.0.1,localhost");
+        env.put("no_proxy","127.0.0.1,localhost");
         env.put("AI_SERVICE_TOKEN", "e2e-internal-token");
         env.put("DEEPSEEK_CLIENT_API_KEY", "fake-provider-key");
         env.put("DEEPSEEK_BASE_URL", "http://127.0.0.1:" + provider.getAddress().getPort() + "/v1");

@@ -59,7 +59,9 @@ export default function KnowledgePage() {
       // 兼容多种错误格式：业务异常 {message} / Spring 异常 {error} / Multipart 异常
       const errData = err.response?.data
       const errMsg = errData?.message || errData?.error || errData?.title || err.message || '上传失败'
-      const displayError = errMsg.includes('/internal/v1/embeddings')
+      const displayError = !err.response
+        ? '连接中断或处理超时，请先刷新资料列表核对是否上传完成，再决定是否重试'
+        : errMsg.includes('/internal/v1/embeddings')
         ? '向量化服务暂时不可用，请检查模型连接后重试。'
         : errMsg
       message.error(`上传失败：${displayError}`)

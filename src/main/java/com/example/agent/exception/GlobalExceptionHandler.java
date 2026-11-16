@@ -14,6 +14,12 @@ import java.util.stream.Collectors;
 @Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+    @ExceptionHandler(VectorStoreUnavailableException.class)
+    public ResponseEntity<ApiErrorResponse> handleVectorStoreUnavailable(VectorStoreUnavailableException ex) {
+        log.warn("Vector-store transport retries exhausted: {}", ex.getCause().getClass().getSimpleName());
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).header("Retry-After", "2")
+                .body(ApiErrorResponse.of(503, "VECTOR_STORE_UNAVAILABLE", ex.getMessage()));
+    }
     @ExceptionHandler(com.example.agent.service.company.InterviewScheduleConflict.class)
     public ResponseEntity<ApiErrorResponse> handleInterviewSchedule(com.example.agent.service.company.InterviewScheduleConflict ex) {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiErrorResponse.of(409,ex.code(),ex.getMessage()));

@@ -61,8 +61,8 @@ chat:
 mybatis-plus:
   configuration:
     map-underscore-to-camel-case: true
-    # 生产环境关闭 SQL 日志
-    # log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+    # Override the base profile: do not print document text or large vector payloads in production.
+    log-impl: org.apache.ibatis.logging.nologging.NoLoggingImpl
 
 # 生产环境关闭 Swagger 的生产环境暴露(可选)
 springdoc:
