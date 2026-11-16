@@ -14,7 +14,6 @@ class ChatSessionManagerTest {
     JdbcTemplate jdbc;
     ChatSessionManager manager;
     @BeforeEach void setup() {
-        jdbc = new JdbcTemplate(new DriverManagerDataSource("jdbc:h2:mem:" + UUID.randomUUID() + ";MODE=MySQL", "sa", ""));
         // Keep the database alive across independent JDBC connections.
         jdbc = new JdbcTemplate(new DriverManagerDataSource("jdbc:h2:mem:" + UUID.randomUUID() + ";MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", ""));
         jdbc.execute("CREATE TABLE chat_history(id BIGINT AUTO_INCREMENT PRIMARY KEY,user_id BIGINT,session_id VARCHAR(64))");

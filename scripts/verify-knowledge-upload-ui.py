@@ -38,12 +38,13 @@ with sync_playwright() as p:
     assert page.evaluate('window.fixtureUploadTimeout')==300000
     assert state['uploads']==1
     state['mode']='disconnected'
-    page.locator('input[type=file]').set_input_files(str(file))
+    page.get_by_role('button',name='重试此文件',exact=True).click()
     expect(page.get_by_text('上传失败：连接中断或处理超时，请先刷新资料列表核对是否上传完成，再决定是否重试',exact=True)).to_be_visible()
-    page.get_by_role('button',name=re.compile('刷新')).click();page.wait_for_load_state('networkidle')
+    page.locator('button').filter(has_text='刷新').click();page.wait_for_load_state('networkidle')
     assert state['uploads']==2
     state['mode']='success'
-    page.locator('input[type=file]').set_input_files(str(file))
+    page.get_by_role('button',name='核对后重试',exact=True).click()
+    page.get_by_role('button',name='确认未成功，重试',exact=True).click()
     expect(page.get_by_role('cell',name='fourth.md',exact=True)).to_be_visible()
     assert state['uploads']==3
     page.screenshot(path='outputs/ui-review/knowledge-upload-recovery.png',full_page=True,animations='disabled')

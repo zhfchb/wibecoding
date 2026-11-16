@@ -84,6 +84,7 @@ public class ChatController {
      */
     @Operation(summary = "删除会话", description = "删除指定 sessionId 的所有历史消息，不影响其他会话")
     @DeleteMapping("/sessions/{sessionId}")
+    @org.springframework.transaction.annotation.Transactional
     public void deleteSession(@PathVariable String sessionId) {
         ragChatService.deleteSession(sessionId);
         sessionManager.delete(sessionId);

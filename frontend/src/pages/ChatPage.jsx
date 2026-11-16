@@ -59,10 +59,14 @@ export default function ChatPage() {
 
   // 切换会话时加载历史
   useEffect(() => {
+    let active = true
+    setMessages([])
     chatApi.history(sessionId).then((resp) => {
+      if (!active) return
       const history = resp.data || []
       setMessages(history.map((h) => ({ role: h.role, content: h.content, sources: (() => { try { return JSON.parse(h.sourcesJson || '[]') } catch { return [] } })() })))
     }).catch(() => {/* 新会话无历史，忽略 */})
+    return () => { active = false }
   }, [sessionId])
 
   const handleNewSession = () => {
@@ -80,6 +84,7 @@ export default function ChatPage() {
   const handleDeleteSession = async (sid, e) => {
     // 阻止冒泡到 List.Item 的 onClick
     if (e) e.stopPropagation()
+    if (loading) return
     try {
       await chatApi.deleteSession(sid)
       message.success('会话已删除')
@@ -103,23 +108,13 @@ export default function ChatPage() {
     setLoading(true)
 
     if (streamMode) {
-      setMessages((prev) => [...prev, { role: 'assistant', content: '' }])
-      let idx = -1
-      setMessages((prev) => {
-        idx = prev.length - 1
-        return prev
-      })
+      const messageId = genSessionId()
+      setMessages((prev) => [...prev, { id: messageId, role: 'assistant', content: '' }])
       await streamChat(
         userMsg,
         sessionId,
         (token) => {
-          setMessages((prev) => {
-            const next = [...prev]
-            if (idx >= 0 && next[idx]) {
-              next[idx] = { ...next[idx], content: next[idx].content + token }
-            }
-            return next
-          })
+          setMessages(prev => prev.map(m => m.id === messageId ? { ...m, content: m.content + token } : m))
         },
         () => {
           setLoading(false)
@@ -129,7 +124,7 @@ export default function ChatPage() {
           message.error('流式对话失败: ' + err.message)
           setLoading(false)
         },
-        (sources) => setMessages(prev => prev.map((m, i) => i === idx ? { ...m, sources } : m)),
+        (sources) => setMessages(prev => prev.map(m => m.id === messageId ? { ...m, sources } : m)),
       )
     } else {
       try {
@@ -233,7 +228,7 @@ export default function ChatPage() {
           <Space>
             <Text type="secondary">实时显示</Text>
             <Switch checked={streamMode} onChange={setStreamMode} />
-            <Button icon={<ReloadOutlined />} onClick={handleClear}>清空</Button>
+            <Button icon={<ReloadOutlined />} disabled={loading} onClick={handleClear}>清空</Button>
           </Space>
         }
         style={{ flex: 1, display: 'flex', flexDirection: 'column' }}
