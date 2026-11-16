@@ -20,18 +20,38 @@ public class ChatSessionManager {
         return id;
     }
     public List<ChatHistoryEntity> decorate(List<ChatHistoryEntity> sessions) {
+        long user = owner();
+        var questions = new HashMap<String, String>();
+        jdbc.queryForList("""
+                SELECT h.session_id,h.content FROM chat_history h JOIN (
+                  SELECT session_id,MIN(id) AS first_id FROM chat_history
+                  WHERE user_id=? AND role='user' GROUP BY session_id
+                ) first_message ON h.id=first_message.first_id
+                """, user).forEach(row -> questions.put((String)row.get("session_id"), (String)row.get("content")));
         var metadata = new HashMap<String, Map<String,Object>>();
-        jdbc.queryForList("SELECT session_id,title,pinned FROM chat_session WHERE user_id=?", owner())
+        jdbc.queryForList("SELECT session_id,title,pinned FROM chat_session WHERE user_id=?", user)
                 .forEach(row -> metadata.put((String)row.get("session_id"), row));
         for (var session : sessions) {
             var row = metadata.get(session.getSessionId());
-            session.setTitle(row == null ? null : (String)row.get("title"));
+            String customTitle = row == null ? null : (String)row.get("title");
+            session.setTitle(customTitle == null || customTitle.isBlank() ? defaultTitle(questions.get(session.getSessionId())) : customTitle);
             session.setPinned(row != null && ((Number)row.get("pinned")).intValue() == 1);
         }
         // Stable sort retains latest-message ordering within each group.
         sessions = new ArrayList<>(sessions);
         sessions.sort(Comparator.comparing(ChatHistoryEntity::isPinned).reversed());
         return sessions;
+    }
+    static String defaultTitle(String question) {
+        if (question == null) return "新会话";
+        String title = question.replaceAll("(?m)^\\s{0,3}(?:#{1,6}\\s+|>\\s*)", "")
+                .replaceAll("[*`~]", "").replaceAll("[\\s\\p{Z}]+", " ").strip();
+        if (title.isEmpty()) return "新会话";
+        // Java/JS both validate UTF-16 length; keep the ellipsis within 24 units.
+        if (title.length() <= 24) return title;
+        int end = 23;
+        if (Character.isHighSurrogate(title.charAt(end - 1))) end--;
+        return title.substring(0, end) + "…";
     }
     @Transactional
     public void update(String session, String title, Boolean pinned) {
