@@ -5,6 +5,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { chatApi, streamChat } from '../api'
 import PageIntro from '../components/PageIntro'
+import SourcePreview from '../components/SourcePreview'
 
 const { TextArea } = Input
 const { Text, Paragraph } = Typography
@@ -276,7 +277,7 @@ export default function ChatPage() {
                   <Divider style={{ margin: '8px 0' }} />
                   <Text type="secondary" style={{ fontSize: 12 }}>来源：</Text>
                   {msg.sources.map((s, j) => (
-                    <details key={j} style={{ marginTop: 8 }}><summary style={{ cursor: 'pointer' }}>[{j + 1}] {s.fileName || '未命名来源'} · 片段 {s.chunkIndex}</summary><div style={{ whiteSpace: 'pre-wrap', marginTop: 8 }}>{s.text || '未提供原文片段'}</div></details>
+                    <SourcePreview key={j} source={s} index={j} />
                   ))}
                 </>
               )}

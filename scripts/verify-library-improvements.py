@@ -5,7 +5,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 from playwright.sync_api import sync_playwright, expect
 
-source = dict(fileName='Java岗位.md', text='必须技能：Java、Spring Boot、MySQL。', chunkIndex=0, score=0.9)
+source = dict(fileName='Java岗位.md', text='# 岗位要求\n\n**必须技能**：Java、Spring Boot、MySQL。\n\n' + '\n\n'.join(['- 核对项目证据'] * 30) + '\n\n<script>window.unsafeSource=true</script>', chunkIndex=0, score=0.9)
 state = dict(title=None, pinned=False, messages=[], calls=[], retry=False, unknown=False)
 draft = '# 初筛清单\n\n**必须技能**\n\n- Java\n- MySQL\n\n| 技能 | 证据 |\n| --- | --- |\n| Java | 项目 |\n\n```java\nSystem.out.println(1);\n```\n\n<script>window.unsafeDraft=true</script>'
 
@@ -52,7 +52,14 @@ with sync_playwright() as p:
     page.get_by_role('button', name=re.compile('发.*送')).click()
     expect(page.locator('summary').filter(has_text='Java岗位.md')).to_be_visible()
     page.locator('summary').click()
-    expect(page.get_by_text(source['text'], exact=True)).to_be_visible()
+    expect(page.locator('.source-preview').get_by_role('heading',name='岗位要求')).to_be_visible()
+    expect(page.locator('.source-preview strong')).to_have_text('必须技能')
+    assert page.locator('.source-preview').evaluate('(el) => el.clientHeight <= 306 && el.scrollHeight > el.clientHeight')
+    assert page.evaluate('window.unsafeSource === undefined')
+    page.get_by_role('button',name='查看原文',exact=True).click()
+    expect(page.locator('.source-preview pre')).to_have_text(source['text'])
+    page.get_by_role('button',name='返回预览',exact=True).click()
+    expect(page.locator('.source-preview').get_by_role('heading',name='岗位要求')).to_be_visible()
     page.reload(); page.wait_for_load_state('networkidle')
     expect(page.locator('summary')).to_contain_text('Java岗位.md')
     page.get_by_role('button', name='置顶会话', exact=True).click()

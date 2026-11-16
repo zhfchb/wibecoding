@@ -90,7 +90,7 @@ def main():
                 page.goto(args.ui+'/chat');page.wait_for_load_state('networkidle')
                 expect(page.locator('summary').first).to_contain_text('.md')
                 page.locator('summary').first.click()
-                expect(page.locator('details[open] div')).not_to_be_empty()
+                expect(page.locator('details[open] .source-preview')).not_to_be_empty()
                 page.get_by_role('button',name='重命名会话',exact=True).click()
                 page.get_by_role('textbox',name='会话名称').fill('真实批量上传验收')
                 page.get_by_role('button',name=re.compile('保.*存')).click()
