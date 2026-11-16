@@ -76,6 +76,7 @@ function QuestionsDrawer({ open, onClose, resumeId, candidateName, canManage, on
   return (
     <Drawer
       title={`定制面试题 — ${candidateName || ''}`}
+      footer={<Button onClick={onClose}>关闭窗口</Button>}
       open={open}
       onClose={onClose}
       width={640}
@@ -147,6 +148,7 @@ function ReportDrawer({ open, onClose, resumeId, candidateName, canManage, onDen
   return (
     <Drawer
       title={`候选人评估报告 — ${candidateName || ''}`}
+      footer={<Button onClick={onClose}>关闭窗口</Button>}
       open={open}
       onClose={onClose}
       width={720}
@@ -584,7 +586,7 @@ export default function PositionWorkbenchPage() {
         onDenied={denyAccess}
         canManage={canOperate}
         open={qDrawer.open}
-        onClose={() => setQDrawer({ ...qDrawer, open: false })}
+        onClose={() => setQDrawer(current => ({ ...current, open: false }))}
         resumeId={qDrawer.resumeId}
         candidateName={qDrawer.name}
       />
@@ -592,7 +594,7 @@ export default function PositionWorkbenchPage() {
         onDenied={denyAccess}
         canManage={canOperate}
         open={rDrawer.open}
-        onClose={() => setRDrawer({ ...rDrawer, open: false })}
+        onClose={() => setRDrawer(current => ({ ...current, open: false }))}
         resumeId={rDrawer.resumeId}
         candidateName={rDrawer.name}
       />

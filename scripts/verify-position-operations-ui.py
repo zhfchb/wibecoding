@@ -7,6 +7,7 @@ from playwright.sync_api import sync_playwright, expect
 
 BASE = os.environ.get('POSITION_UI_URL', 'http://127.0.0.1:5173')
 state = {'role': 'OWNER', 'grants': [], 'match': None, 'parse': None, 'material': None, 'decision': 'PENDING', 'writes': [], 'activity_error': True}
+held_material_reads = []
 
 
 def task(kind, actor=2):
@@ -44,6 +45,9 @@ def api(route):
         if role == 'VIEWER':
             route.fulfill(status=404, json={'message': 'fixture downgraded'}); return
         kind = 'match' if match_task else 'parse' if parse_task else 'material'
+        if kind == 'material' and method == 'GET' and state.get('hold_material'):
+            held_material_reads.append(route)
+            return
         if method == 'POST' and path.endswith('/cancel'):
             assert state[kind]['canCancel']
             state[kind]['status'] = 'CANCELLED'
@@ -116,6 +120,23 @@ with sync_playwright() as p:
     page.get_by_role('button', name=re.compile('重新生成面试题$')).click()
     expect(page.get_by_role('button', name='取消生成', exact=True)).to_be_visible()
     page.locator('.ant-drawer-open .ant-drawer-close').click()
+    expect(page.get_by_role('dialog')).not_to_be_visible()
+    state['hold_material'] = True
+    page.get_by_role('button', name='面试题', exact=True).first.click()
+    expect(page.get_by_role('dialog')).to_be_visible()
+    page.locator('.ant-drawer-open .ant-drawer-close').click()
+    expect(page.get_by_role('dialog')).not_to_be_visible()
+    page.get_by_role('button', name='面试题', exact=True).first.click()
+    page.get_by_role('button', name='关闭窗口', exact=True).click()
+    expect(page.get_by_role('dialog')).not_to_be_visible()
+    assert held_material_reads, 'Expected pending status query while testing close'
+    state['hold_material'] = False
+    page.get_by_role('button', name='面试题', exact=True).first.click()
+    page.get_by_role('button', name='取消生成', exact=True).click()
+    page.get_by_role('button', name='取消本轮', exact=True).click()
+    expect(page.get_by_text('生成任务已取消，原内容保留', exact=True)).to_be_visible()
+    page.get_by_role('button', name='关闭窗口', exact=True).click()
+    expect(page.get_by_role('dialog')).not_to_be_visible()
     page.get_by_role('button', name='操作记录', exact=True).click()
     expect(page.get_by_text('无法读取操作记录，请重试或确认协作权限', exact=True)).to_be_visible()
     state['activity_error'] = False

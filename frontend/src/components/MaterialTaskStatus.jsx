@@ -14,8 +14,8 @@ export default function MaterialTaskStatus({ state, hasContent }) {
               : '生成完成'}
       description={state.active ? `关闭窗口后任务继续，重新打开可查看进度。${hasContent ? '下方保留上一次内容，成功后更新。' : ''}` : null}
       action={state.active && task.canCancel !== false ? <Popconfirm title="取消本轮生成？" description="已发出的模型请求可能仍会计费，原内容保留。"
-        okText="取消本轮" cancelText="继续执行" onConfirm={state.cancel}>
-        <Button size="small">取消生成</Button>
+        okText="取消本轮" cancelText="继续执行" onConfirm={state.cancel} okButtonProps={{ loading: state.cancelling }}>
+        <Button size="small" loading={state.cancelling}>取消生成</Button>
       </Popconfirm> : null} />}
   </>
 }

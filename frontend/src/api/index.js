@@ -178,7 +178,7 @@ export const recruitmentApi = {
   cancelResumeParseTask: (taskId) => api.post(`/recruitment/resumes/parse-tasks/${taskId}/cancel`),
   submitMaterialTask: (resumeId, kind, requestKey) =>
     api.post(`/recruitment/resumes/${resumeId}/materials/${kind}/tasks`, { requestKey }),
-  latestMaterialTask: (resumeId, kind) => api.get(`/recruitment/resumes/${resumeId}/materials/${kind}/tasks/latest`),
+  latestMaterialTask: (resumeId, kind, config) => api.get(`/recruitment/resumes/${resumeId}/materials/${kind}/tasks/latest`, config),
   cancelMaterialTask: (taskId) => api.post(`/recruitment/materials/tasks/${taskId}/cancel`),
 
   // 人岗匹配
