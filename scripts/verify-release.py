@@ -38,7 +38,9 @@ def main():
     if not args.skip_browser:
         steps.extend((name, [sys.executable, str(root / 'scripts' / script)], root) for name, script in [
             ('progress-browser', 'verify-progress-ui.py'), ('outcome-browser', 'verify-outcome-ui.py'),
-            ('collaboration-browser', 'verify-position-operations-ui.py')])
+            ('collaboration-browser', 'verify-position-operations-ui.py'),
+            ('interview-browser', 'verify-interview-ui.py'),
+            ('hiring-workflow-browser', 'verify-hiring-workflow-ui.py')])
     report = dict(scope='H2/hash vectors + simulated AI + fixture browser APIs; no production acceptance claim', steps=[])
     failed = False
     for name, command, cwd in steps:
