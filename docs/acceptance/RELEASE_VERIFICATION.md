@@ -14,7 +14,7 @@ python scripts/verify-release.py
 
 前置条件：已有Java/Maven、Node/npm、Python Playwright与Chrome、`ai-service/.venv`依赖，前端Vite已运行于5173。脚本不安装依赖，不启动Docker或修改环境配置；Vite未启动时明确报错，也可用 `--skip-browser` 仅执行后端与前端构建。已有其他本机前端端口可用 `--ui-url http://127.0.0.1:端口`，仅接受本机地址。
 
-步骤为Maven clean verify（开启已有模拟Python跨服务测试）、前端构建、招聘进度/结果/流程协作三类页面回归；任一步失败停止并返回非零退出码。独立日志和report.json保存在被忽略的 `outputs/acceptance/时间戳/`，成功仅表示报告中列出的范围通过；跳过浏览器时不会声称页面已验证。清理target后再运行，避免统计旧测试报告。
+步骤为Maven clean verify（开启已有模拟Python跨服务测试）、前端构建，以及招聘进度、招聘结果、流程协作、面试评价、招聘流程、资料库/会话和上传恢复共7组页面回归；任一步失败停止并返回非零退出码。资料库回归包含重命名超长预填和输入检查。独立日志和report.json保存在被忽略的 `outputs/acceptance/时间戳/`，成功仅表示报告中列出的范围通过；跳过浏览器时不会声称页面已验证。清理target后再运行，避免统计旧测试报告。
 
 ## 新增真实HTTP业务链
 
