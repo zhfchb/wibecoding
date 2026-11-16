@@ -15,7 +15,7 @@ with sync_playwright() as p:
     page.get_by_role('button', name=re.compile('进入工作台')).click()
     expect(page).to_have_url(re.compile('/interviews$'))
     for index, candidate in enumerate(state['assignments']):
-        row = page.get_by_role('row').filter(has_text=candidate['candidate'])
+        row = page.get_by_role('row').filter(has_text=candidate['candidate']).filter(has_text='第1轮')
         expect(row).to_be_visible()
         row.get_by_role('button').click()
         expect(page.get_by_role('dialog')).to_be_visible()

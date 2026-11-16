@@ -119,7 +119,7 @@ def main():
                 summary='【虚构预填】演示评价，仅用于学习提交后锁定。' if index == 2 else '', submit=index == 2))
         summary.append(dict(candidate=name, resumeId=rid, assignmentId=aid))
     mine = api('GET', '/interviews/assignments', reviewer_token)
-    selected = [a for a in mine if a['positionId'] == pid]
+    selected = [a for a in mine if a['positionId'] == pid and a.get('roundNo',1) == 1]
     assert len(selected) == 3
     for row in selected:
         detail = api('GET', f'/interviews/assignments/{row["id"]}', reviewer_token)
