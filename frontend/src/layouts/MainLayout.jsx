@@ -2,8 +2,7 @@ import { useState } from 'react'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { Layout, Menu, Button, Drawer, Avatar } from 'antd'
 import { LogoutOutlined, MessageOutlined, FileTextOutlined, TeamOutlined, CheckSquareOutlined, MenuOutlined, ArrowRightOutlined } from '@ant-design/icons'
-import { useAuth } from '../context/AuthContext'
-
+import { useAuth } from '../features/auth/context/AuthContext.jsx'
 const companyRoutes = [
   { key: '/company/profile', label: '公司资料', hint: '公司管理 / 公司资料' },
   { key: '/company/departments', label: '部门管理', hint: '公司管理 / 部门管理' },
