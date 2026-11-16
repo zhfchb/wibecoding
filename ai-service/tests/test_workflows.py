@@ -1,8 +1,8 @@
 from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
-import app.workflows as workflows
-from app.chat import RagRequest
+import app.features.workflows as workflows
+from app.features.chat import RagRequest
 
 
 class Model:

@@ -1,6 +1,6 @@
 from fastapi.testclient import TestClient
 from app.main import app
-from app.vectors import get_embeddings
+from app.features.vectors import get_embeddings
 
 
 def test_embedding_contract(monkeypatch):

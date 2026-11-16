@@ -1,8 +1,9 @@
 from types import SimpleNamespace
 from fastapi.testclient import TestClient
-from app.main import app, get_model
-from app.chat import calculator
-import app.chat as chat
+from app.main import app
+from app.core.runtime import get_model
+from app.features.chat import calculator
+import app.features.chat as chat
 import pytest
 
 

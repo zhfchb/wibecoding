@@ -13,8 +13,8 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.types import interrupt, Command
 from langgraph.checkpoint.sqlite import SqliteSaver
 from pydantic import BaseModel, Field
-from app.runtime import authorize, get_model
-from app.chat import RagRequest, retrieve, sources, messages_for
+from app.core.runtime import authorize, get_model
+from app.features.chat import RagRequest, retrieve, sources, messages_for
 
 router = APIRouter(dependencies=[Depends(authorize)])
 

@@ -12,7 +12,7 @@ from fastapi.responses import StreamingResponse
 from langchain.agents import create_agent
 from langchain_core.tools import tool
 from pydantic import BaseModel, Field
-from app.runtime import authorize, get_model
+from app.core.runtime import authorize, get_model
 
 router = APIRouter(dependencies=[Depends(authorize)])
 

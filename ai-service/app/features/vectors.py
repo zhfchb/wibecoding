@@ -6,8 +6,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from langchain_openai import OpenAIEmbeddings
 from pydantic import BaseModel, Field, field_validator
 import httpx
-from app.runtime import authorize
-from app.network import get_vector_http_client
+from app.core.runtime import authorize
+from app.core.network import get_vector_http_client
 
 logger = logging.getLogger(__name__)
 

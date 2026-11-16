@@ -1,7 +1,8 @@
 from fastapi.testclient import TestClient
 from langchain_core.runnables import RunnableLambda
-from app.main import app, get_model
-from app.recruitment import SCHEMAS
+from app.main import app
+from app.core.runtime import get_model
+from app.features.recruitment import SCHEMAS
 import pytest
 
 

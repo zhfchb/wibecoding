@@ -1,6 +1,8 @@
 import pytest
 from fastapi.testclient import TestClient
-from app.main import app, get_parser, get_model
+from app.main import app
+from app.features.resumes import get_parser
+from app.core.runtime import get_model
 
 
 class Parser:
@@ -73,6 +75,8 @@ def test_missing_service_token(client, monkeypatch):
 
 
 def test_real_langchain_pipeline_with_mock_model_http(monkeypatch):
+    # The fake provider is loopback-only; do not route it through host proxy settings.
+    monkeypatch.setenv("NO_PROXY", "127.0.0.1,localhost")
     import json
     from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
     from threading import Thread
