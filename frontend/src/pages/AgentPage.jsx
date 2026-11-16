@@ -3,6 +3,8 @@ import { Card, Input, Button, List, Tag, Typography, Space, Modal, Form, message
 import { PlusOutlined, CheckOutlined, CloseOutlined, ReloadOutlined } from '@ant-design/icons'
 import { agentApi } from '../api'
 import PageIntro from '../components/PageIntro'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 
 const { TextArea } = Input
 const { Text, Paragraph, Title } = Typography
@@ -150,7 +152,7 @@ export default function AgentPage() {
                   {task.draft && (
                     <div style={{ background: '#fafafa', padding: 12, borderRadius: 6, margin: '8px 0' }}>
                       <Text type="secondary" style={{ fontSize: 12 }}>草稿：</Text>
-                      <div style={{ whiteSpace: 'pre-wrap', marginTop: 4 }}>{task.draft}</div>
+                      <div className="markdown-body" style={{ marginTop: 4, overflowX: 'auto', overflowWrap: 'anywhere' }}><ReactMarkdown remarkPlugins={[remarkGfm]}>{task.draft}</ReactMarkdown></div>
                     </div>
                   )}
                   {task.reviewFeedback && (
