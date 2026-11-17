@@ -17,6 +17,8 @@ def api(route):
     path = urlparse(route.request.url).path
     if path.endswith('/progress'):
         route.fulfill(json=[]); return
+    if path.endswith('/positions/1/interviews'):
+        route.fulfill(json=[]); return
     method = route.request.method
     material = re.search(r"/resumes/(\d+)/materials/(QUESTIONS|REPORT)/tasks(/latest)?$", path)
     if material:
