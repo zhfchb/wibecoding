@@ -1,5 +1,7 @@
 # 文档导航
 
+当前结构与学习：[项目结构与源码阅读路线](development/项目结构与源码阅读路线.md)、[结构整理验收](acceptance/PROJECT_STRUCTURE_20261116.md)、[脚本分类](../scripts/README.md)。
+
 当前功能范围与收尾证据：[本轮功能收尾基线](acceptance/FUNCTIONAL_CLOSEOUT_20261116.md)，包含已交付能力、默认标题修复和后续阶段边界。
 
 业务使用入口：[从收到简历到完成面试评价](product/招聘流程操作指南.md)，按公司管理员、HR、岗位负责人和面试官说明操作顺序。

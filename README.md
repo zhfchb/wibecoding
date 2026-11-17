@@ -87,7 +87,7 @@ Copy-Item .env.local.example .env.local
 mvn clean package
 #deploy/Dockerfile.local 使用 target 中的 JAR
 # 已有数据库先按下方“数据库升级”完成迁移，再启动应用
-docker compose --env-file .env.local -fdeploy/docker-compose.local.yml up -d --build
+docker compose --env-file .env.local -f deploy/docker-compose.local.yml up -d --build
 ```
 
 本地栈包含 Java、Python、MySQL、Redis、Qdrant，项目名为 `wibecoding-local`。Java API 为 [http://127.0.0.1:18080](http://127.0.0.1:18080)，接口文档为 [Swagger UI](http://127.0.0.1:18080/swagger-ui.html)；Python 8000 仅在 Compose 内部访问。初始账号配置见 [init-users.sql](scripts/init-users.sql)，仅供本地测试。
@@ -108,7 +108,7 @@ npm run dev -- --host 127.0.0.1 --strictPort
 停止服务但保留数据：
 
 ```powershell
-docker compose --env-file .env.local -fdeploy/docker-compose.local.yml stop
+docker compose --env-file .env.local -f deploy/docker-compose.local.yml stop
 ```
 
 ## 数据库升级
@@ -165,6 +165,8 @@ python scripts/verify-live-ui.py --state outputs/acceptance/live-时间戳/state
 真实脚本支持恢复已有状态，不应为重试而反复新建付费流程。压测、备份恢复演练和生产部署验收仍待执行。
 
 ## 目录与文档
+
+当前目录归属与学习顺序见[项目结构与源码阅读路线](docs/development/项目结构与源码阅读路线.md)，脚本见[分类导航](scripts/README.md)。结构整理保持97个HTTP操作契约兼容，验证范围见[结构验收](docs/acceptance/PROJECT_STRUCTURE_20261116.md)。
 
 ```text
 src/          Java 业务、权限、配置及测试
