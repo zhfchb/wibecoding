@@ -1,53 +1,35 @@
 # 择序 · AI 技术招聘协作工作台
 
-[![CI](https://github.com/zhfchb/wibecoding/actions/workflows/ci.yml/badge.svg)](https://github.com/zhfchb/wibecoding/actions/workflows/ci.yml)
+[![CI](https://github.com/zhfchb/wibecoding/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/zhfchb/wibecoding/actions/workflows/ci.yml)
 
-择序是面向中小型技术团队的招聘协作工作台，支持岗位管理、简历初筛、面试协作与招聘资料管理。公司管理员、招聘人员和面试官按角色与授权参与流程。系统提供匹配依据、面试资料和文档引用，招聘人员负责最终决策。
+择序是一套面向技术招聘团队的协作工作台。HR 可以从岗位出发管理简历、核对匹配依据、安排面试并记录招聘结果。面试官在独立工作台查看获分配的候选人、准备面试并提交评价。AI 辅助整理信息，招聘团队负责最终决策。
 
-当前发布基线为 `v1.0.0`，适用于学习、演示和本地试用。已完成单个虚构候选人的真实模型主流程验收。生产部署、性能压测和备份恢复演练尚未验收。
+[快速启动](#本地启动windows-powershell) · [招聘流程指南](docs/product/招聘流程操作指南.md) · [源码导读](docs/development/项目结构与源码阅读路线.md) · [文档中心](docs/README.md)
 
-## 功能范围
+## 核心功能
 
-| 模块 | 当前能力 |
+| 场景 | 功能 |
 | --- | --- |
-| 公司与部门 | 公司资料、省市联动、必填/选填字段、成员与平级部门管理、部门启停、岗位关联部门 |
-| 岗位与简历 | 创建岗位、导入 JD、简历上传与结构化解析、失败简历后台重新解析 |
-| 人岗匹配 | 规则与模型语义混合评分、技能命中与缺失、人工初筛、持久化后台任务 |
-| 招聘协作 | 按岗位显式授予 VIEWER / EDITOR；实际操作人与数据 owner 分离、撤权校验、操作记录 |
-| 面试准备 | 后台生成定制面试题和评估报告，保留已有结果并校验生成来源 |
-| 面试官工作台 | 候选人级分配、必要资料读取、私有评价草稿、提交后锁定 |
-| 面试排期 | 明确时区、冲突校验、改期/取消、完成/未到场、独立版本及历史 |
-| 招聘结果 | 人工记录待定/录用/淘汰/退出，原因、归档、重新开启、版本冲突保护 |
-| 进度总览 | 当前岗位结果分布、归档统计、姓名/文件名搜索、组合筛选与待决定提示 |
-| 招聘支持 | 私人资料库、带来源的 RAG 问答、SSE、Agent 工具调用、LangGraph 人工审核 |
+| 岗位与初筛 | 创建岗位或导入 JD，上传简历并解析，查看候选人与岗位要求的匹配依据。 |
+| 面试协作 | 生成面试题和参考报告，按轮次分配面试官、安排时间并收集评价。 |
+| 招聘跟进 | 查看岗位进度、记录候选人沟通与招聘结果，支持归档和重新开启。 |
+| 资料问答 | 批量上传招聘资料，查看带原文引用的回答，管理会话及审核生成草稿。 |
+| 组织与权限 | 管理公司资料、部门与成员，通过岗位授权控制协作者的访问范围。 |
 
-公司管理员、HR、面试官通过公司角色和岗位授权分工；系统 ADMIN 不绕过公司/岗位权限。VIEWER 只读，EDITOR 可推进招聘流程；岗位修改、上传删除和转授权仍由创建人负责。面试官仅能查看本人获分配候选人的必要资料。
+## 技术架构
 
-归档仅锁定招聘结果记录，不自动取消任务、撤销面试或删除资料。尚未实现外部通知/日历邀请、候选人投递入口、Offer/入职管理、多公司切换及复杂组织树。详见[产品定位](docs/product/PRODUCT.md)和[角色权限](docs/product/用户定位与角色权限.md)。
+| 层 | 技术与职责 |
+| --- | --- |
+| Web 工作台 | React、Ant Design、Vite，提供招聘、面试及公司管理界面。 |
+| 业务服务 | Java 17、Spring Boot、MyBatis-Plus，处理权限、招聘流程及后台任务。 |
+| AI 服务 | Python、FastAPI、LangChain、LangGraph，执行模型调用及人工审核工作流。 |
+| 数据存储 | MySQL 保存业务记录，Redis 支持会话存储，Qdrant 保存向量，SQLite 持久化审核检查点。 |
 
-## 架构与技术栈
-
-```text
-React / Ant Design
-        ↓ JWT
-Spring Boot：公司、权限、招聘、任务、会话与数据访问
-        ├── MySQL / Redis / Qdrant
-        └── Python FastAPI / LangChain / LangGraph
-                    ├── DeepSeek：生成、解析、语义评分
-                    ├── 硅基流动：Embedding / 可选 Rerank
-                    └── SQLite checkpoint：人工审核工作流
-        ↑ 带内部令牌及 ownerId 的检索回调
-```
-
-- Java 17、Spring Boot 3.3.5、MyBatis-Plus、MySQL 8、Redis、Qdrant。
-- Python 3.12、FastAPI、LangChain、LangGraph；依赖锁定于 [requirements.lock](ai-service/requirements.lock)。
-- React 18、Vite 5、Ant Design；依赖锁定于 [package-lock.json](frontend/package-lock.json)。
-- Java 承担文档解析/切块、混合召回（稠密 + 稀疏 + RRF）及业务校验；Python 执行真实模型、向量与重排请求。
-- 已移除 LangChain4j / LangGraph4j。hash 向量用于演示和自动回归，与真实向量数据应分开使用。
+本地配置支持 DeepSeek 和硅基流动。Java 服务负责资料切分与检索，Python 服务负责模型调用、向量化和可选重排。
 
 ## 本地启动（Windows PowerShell）
 
-准备 Java 17、Maven、Docker Compose、Python 3.12 和 Node.js（CI 使用 Node 20）。所有命令从项目根目录开始。
+准备 Java 17、Maven、Docker Compose和 Node.js（CI 使用 Node 20）。所有命令从项目根目录开始。
 
 ### 1. 配置模型
 
@@ -67,7 +49,7 @@ Copy-Item .env.local.example .env.local
 | `RAG_EMBEDDING_PROVIDER` | 真实向量化设为 `openai`；模板默认为 `hash` |
 | `RAG_EMBEDDING_API_KEY` | 硅基流动密钥 |
 | `RAG_EMBEDDING_BASE_URL` / `RAG_EMBEDDING_MODEL` | 默认硅基流动地址 / `BAAI/bge-m3` |
-| `TAVILY_API_KEY` | 可选市场搜索配置；未配置时不能据此宣称真实市场引用已验证 |
+| `TAVILY_API_KEY` | 可选市场搜索配置 |
 
 代理仅在实际网络需要时配置，见[本地 Docker 说明](docs/development/LOCAL_DOCKER.md)。真实密钥、测试账号、备份不提交 Git。
 
@@ -75,8 +57,7 @@ Copy-Item .env.local.example .env.local
 
 ```powershell
 mvn clean package
-#deploy/Dockerfile.local 使用 target 中的 JAR
-# 已有数据库先按下方“数据库升级”完成迁移，再启动应用
+# 已有数据库先按迁移指南完成迁移，再启动应用
 docker compose --env-file .env.local -f deploy/docker-compose.local.yml up -d --build
 ```
 
@@ -101,81 +82,13 @@ npm run dev -- --host 127.0.0.1 --strictPort
 docker compose --env-file .env.local -f deploy/docker-compose.local.yml stop
 ```
 
-## 数据库升级
+## 文档
 
-新数据卷由 `deploy/local/01-schema.sql` 初始化；已有数据卷不会自动重跑初始化脚本。先备份，再按[数据库迁移顺序](deploy/migrations/README.md)执行对应增量 SQL，完成后更新前后端。
+| 主题 | 入口 |
+| --- | --- |
+| 使用与演示 | [招聘流程指南](docs/product/招聘流程操作指南.md) · [资料库练习](docs/development/招聘资料库学习练习.md) · [面试工作台练习](docs/development/面试工作台练习.md) |
+| 部署与升级 | [部署说明](deploy/README.md) · [本地 Docker 配置](docs/development/LOCAL_DOCKER.md) · [数据库迁移](deploy/migrations/README.md) |
+| 开发与验证 | [源码导读](docs/development/项目结构与源码阅读路线.md) · [验收指南](docs/acceptance/RELEASE_VERIFICATION.md) · [脚本导航](scripts/README.md) |
+| 版本记录 | [变更日志](docs/变更日志.md) · [v1.0.0 验收记录](docs/acceptance/PROJECT_STRUCTURE_20261116.md) |
 
-迁移覆盖后台任务、公司资料、部门、岗位协作、面试分配/排期和招聘结果。旧岗位不自动猜测部门或迁移归属；`review_position_departments.sql` 仅供人工核对。详细部署入口见 [deploy/README.md](deploy/README.md)。生产 Compose 是配置模板，不代表已完成生产部署验收。
-
-## 使用流程
-
-1. 公司管理员完善公司资料，维护部门和 HR / 面试官成员。
-2. HR 创建岗位或导入 JD，上传简历并检查解析结果。
-3. 执行匹配、核对评分依据，人工决定初筛结果；可授权指定成员协作。
-4. 生成面试题和报告，分配面试官并安排时间。
-5. 面试官在独立工作台准备面试、保存草稿，面试结束后提交评价。
-6. HR 结合证据记录最终招聘结果、填写原因并归档；从进度总览跟进待决定人选。
-
-详见[使用文档](docs/development/使用文档.md)。
-
-## 验证与验收
-
-版本提交 `7330f5c` 的 GitHub Actions 检查已通过。首次运行的 Java 任务在解析 Maven 依赖时收到 HTTP 429，第二次运行成功。详见 [CI 运行记录](https://github.com/zhfchb/wibecoding/actions/runs/44440906304)。
-
-2026-11-08 的完整自动化回归为 **185 项：180 通过、5 跳过**，前端构建及进度、结果、招聘协作三类页面回归通过。日期和范围对应已有验收记录，不表示每次克隆自动运行了这些检查。
-
-2026-11-09一致性修复后，后端全量增至**200项：195通过、5跳过**，前端构建通过；后续已通过完整浏览器回归与修复后真实模型流程，详见[运行复核](docs/acceptance/RUNTIME_UPGRADE_20261109.md)。
-
-统一本地验收（复用已有 Python 虚拟环境及 Playwright/Chrome，前端 Vite 需已启动）：
-
-```powershell
-python scripts/verify-release.py
-# 不运行浏览器时
-python scripts/verify-release.py --skip-browser
-```
-
-报告保存到被忽略的 `outputs/acceptance/`。自动验收使用 H2、本地向量与模拟 AI；另有真实 HTTP/JWT/multipart 跨模块流程和并发验证，见[统一验收说明](docs/acceptance/RELEASE_VERIFICATION.md)。
-
-首次准备 Python 环境：
-
-```powershell
-py -3.12 -m venv ai-service/.venv
-& .\ai-service\.venv\Scripts\python.exe -m pip install -r ai-service/requirements.lock
-& .\ai-service\.venv\Scripts\python.exe -m pytest -q ai-service
-```
-
-真实部署已使用 DeepSeek 与硅基流动完成单份虚构简历的解析、1024 维 Qdrant 写入、无降级匹配、6 道面试题、报告、带来源 RAG、排期、人工评价、录用与归档/重新开启，并通过四角色真实页面检查。该样本报告没有外部市场引用；未进行压力测试或生产发布。详情见[真实招聘验收](docs/acceptance/LIVE_RECRUITMENT_ACCEPTANCE.md)。
-
-如需自行执行真实验收，以下命令会创建独立虚构测试数据并消耗真实模型额度：
-
-```powershell
-python scripts/verify-live-recruitment.py
-# 使用首次输出的 state.json 路径做四角色页面验证
-python scripts/verify-live-ui.py --state outputs/acceptance/live-时间戳/state.json
-```
-
-真实脚本支持恢复已有状态，不应为重试而反复新建付费流程。压测、备份恢复演练和生产部署验收仍待执行。
-
-## 目录与文档
-
-第一版基线：`v1.0.0`（学习、演示与本地试用）。2026-11-19完成结构整理后的真实页面复核和前端构建；修复已有参考答案的题目抽屉渲染问题。完整自动回归沿用2026-11-16报告，生产压测、恢复演练和部署验收仍待另行开展。
-
-当前目录归属与学习顺序见[项目结构与源码阅读路线](docs/development/项目结构与源码阅读路线.md)，脚本见[分类导航](scripts/README.md)。结构整理保持97个HTTP操作契约兼容，验证范围见[结构验收](docs/acceptance/PROJECT_STRUCTURE_20261116.md)。
-
-```text
-src/          Java 业务、权限、配置及测试
-ai-service/   Python AI 服务及锁定依赖
-frontend/     React 工作台
-deploy/      Compose、Dockerfile、初始化与增量迁移
-scripts/      数据初始化、自动回归、真实验收入口
-docs/         产品、开发、验收与历史资料
-demo-data/    公开演示素材；local/ 私有素材不提交
-outputs/      本地日志、截图、测试账号与报告，不提交
-```
-
-- [文档导航](docs/README.md)：统一入口。
-- [产品定位与权限](docs/product/PRODUCT.md)、[公司管理分阶段记录](docs/development/公司管理分阶段计划.md)。
-- [部署说明](deploy/README.md)、[数据库迁移](deploy/migrations/README.md)、[环境配置](docs/development/环境配置说明.md)。
-- [架构大纲](docs/development/项目架构大纲.md)、[AI 迁移记录](docs/development/LangChain分阶段迁移.md)、[变更日志](docs/变更日志.md)。
-
-`target/`、`.venv/`、`node_modules/`、`frontend/dist/` 为生成目录。旧设计和面试资料按历史背景阅读，当前行为以代码及上述验收记录为准。本项目用于学习、演示和试用。
+升级已有数据库时，请先备份，再按迁移顺序执行增量 SQL。项目当前面向学习、演示与本地试用。
