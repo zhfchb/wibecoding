@@ -14,6 +14,8 @@ if urlparse(BASE).hostname not in ('localhost','127.0.0.1'):raise ValueError('Lo
 with sync_playwright() as p:
     browser=p.chromium.launch(channel='chrome',headless=True)
     page=browser.new_page(viewport=dict(width=1440,height=1000))
+    page_errors=[]
+    page.on('pageerror', lambda error: page_errors.append(str(error)))
     def login(username,password):
         page.goto(BASE+'/login');page.wait_for_load_state('networkidle')
         page.locator('#username').fill(username);page.locator('#password').fill(password)
@@ -23,8 +25,9 @@ with sync_playwright() as p:
     page.goto(BASE+f'/recruitment/positions/{interviews["positionId"]}');page.wait_for_load_state('networkidle')
     expect(page.get_by_text('招聘流程 · 下一步',exact=True)).to_be_visible()
     row=page.get_by_role('row').filter(has_text=interviews['assignments'][0]['candidate'])
-    row.get_by_role('button',name='面试题',exact=True).click()
+    row.get_by_role('button',name='面试题',exact=True).last.click()
     expect(page.get_by_text('【演示预设】如何排查一条慢SQL？',exact=True)).to_be_visible()
+    expect(page.get_by_text('参考答案要点：',exact=True)).to_have_count(3)
     page.get_by_role('button',name='关闭窗口',exact=True).click()
     expect(page.get_by_role('dialog')).not_to_be_visible()
     row.get_by_role('button',name='跟进与汇总',exact=True).first.click()
@@ -41,6 +44,7 @@ with sync_playwright() as p:
     page.get_by_text('手工确认的招聘问题',exact=True).first.click()
     expect(page.get_by_role('button',name='重命名会话',exact=True).first).to_be_visible()
     page.screenshot(path=str(ROOT/'outputs/acceptance/restructure/chat-page.png'),full_page=True)
+    assert not page_errors, page_errors
     browser.close()
 report=dict(passed=True,mocked=False,readOnly=True,modelCalls=0,checks=['HR workflow','extracted question drawer','followup history','interviewer rounds','preserved chat title'])
 (ROOT/'outputs/acceptance/restructure/runtime-ui-report.json').write_text(json.dumps(report,indent=2),encoding='utf-8')

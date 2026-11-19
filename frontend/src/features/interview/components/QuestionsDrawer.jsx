@@ -4,7 +4,7 @@ import { ThunderboltOutlined } from '@ant-design/icons'
 import { interviewApi } from '../api.js'
 import useMaterialTask from '../hooks/useMaterialTask.js'
 import MaterialTaskStatus from './MaterialTaskStatus.jsx'
-const { Paragraph } = Typography
+const { Paragraph, Text } = Typography
 
 const difficultyTag = (d) => ({
   EASY: <Tag color="green">简单</Tag>,
