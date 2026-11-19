@@ -1,5 +1,7 @@
 # 文档导航
 
+第一版基线v1.0.0：2026-11-19完成恢复与页面复核，见[结构验收](acceptance/PROJECT_STRUCTURE_20261116.md)。定位为学习、演示和本地试用。
+
 当前结构与学习：[项目结构与源码阅读路线](development/项目结构与源码阅读路线.md)、[结构整理验收](acceptance/PROJECT_STRUCTURE_20261116.md)、[脚本分类](../scripts/README.md)。
 
 当前功能范围与收尾证据：[本轮功能收尾基线](acceptance/FUNCTIONAL_CLOSEOUT_20261116.md)，包含已交付能力、默认标题修复和后续阶段边界。

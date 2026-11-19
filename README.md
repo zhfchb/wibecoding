@@ -166,6 +166,8 @@ python scripts/verify-live-ui.py --state outputs/acceptance/live-时间戳/state
 
 ## 目录与文档
 
+第一版基线：`v1.0.0`（学习、演示与本地试用）。2026-11-19完成结构整理后的真实页面复核和前端构建；修复已有参考答案的题目抽屉渲染问题。完整自动回归沿用2026-11-16报告，生产压测、恢复演练和部署验收仍待另行开展。
+
 当前目录归属与学习顺序见[项目结构与源码阅读路线](docs/development/项目结构与源码阅读路线.md)，脚本见[分类导航](scripts/README.md)。结构整理保持97个HTTP操作契约兼容，验证范围见[结构验收](docs/acceptance/PROJECT_STRUCTURE_20261116.md)。
 
 ```text
