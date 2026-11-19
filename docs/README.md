@@ -1,28 +1,12 @@
-# 文档导航
+# 择序项目文档
 
-第一版基线v1.0.0：2026-11-19完成恢复与页面复核，见[结构验收](acceptance/PROJECT_STRUCTURE_20261116.md)。定位为学习、演示和本地试用。
+本目录提供产品说明、使用指南、部署与开发资料以及验收记录。当前版本为 `v1.0.0`，适用于学习、演示和本地试用。安装与启动请参阅[项目 README](../README.md)。
 
-当前结构与学习：[项目结构与源码阅读路线](development/项目结构与源码阅读路线.md)、[结构整理验收](acceptance/PROJECT_STRUCTURE_20261116.md)、[脚本分类](../scripts/README.md)。
+- 业务操作请参阅[招聘流程操作指南](product/招聘流程操作指南.md)，按公司管理员、招聘人员、岗位负责人和面试官查阅操作步骤。
+- 开发与源码学习请参阅[项目结构与源码阅读路线](development/项目结构与源码阅读路线.md)及[脚本导航](../scripts/README.md)。
+- 版本验收请参阅[功能基线](acceptance/FUNCTIONAL_CLOSEOUT_20261116.md)、[招聘流程验收](acceptance/HIRING_WORKFLOW_20261116.md)和[结构整理验收](acceptance/PROJECT_STRUCTURE_20261116.md)。
 
-当前功能范围与收尾证据：[本轮功能收尾基线](acceptance/FUNCTIONAL_CLOSEOUT_20261116.md)，包含已交付能力、默认标题修复和后续阶段边界。
-
-业务使用入口：[从收到简历到完成面试评价](product/招聘流程操作指南.md)，按公司管理员、HR、岗位负责人和面试官说明操作顺序。
-
-最新招聘流程验证：[招聘协作流程验收](acceptance/HIRING_WORKFLOW_20261116.md)，含轮次、跟进/汇总、权限、增量升级及真实演示岗位复核。
-
-面试官练习：[面试工作台练习](development/面试工作台练习.md)，包含3个虚构候选人、面试题和排期/评价状态。
-
-用户反馈与完成状态：[开发待办](product/开发待办.md)。本轮结果：[资料库体验升级验收](acceptance/LIBRARY_IMPROVEMENTS_20261116.md)，包含批量上传、问答来源、会话置顶/重命名与审核Markdown排版。
-
-最新问题修复：[招聘资料库上传中断恢复](acceptance/KNOWLEDGE_UPLOAD_RECOVERY.md)，包含连接断开、有限重试、错误提示及第4份学习素材复测。
-
-学习入口：[招聘资料库上手练习](development/招聘资料库学习练习.md)，配套7份虚构可上传素材及问答核对题。
-
-所有命令默认从项目根目录执行。历史文档保留用于理解演进，框架、接口和启动方式以当前代码、根 README 和迁移说明为准。
-
-最新修复：[文档一致性、岗位并发与生产初始化](acceptance/CONSISTENCY_FIXES.md)，已有数据库需执行文档生命周期第13项迁移。
-
-最新运行：[2026-11-09修复后真实升级与运行复核](acceptance/RUNTIME_UPGRADE_20261109.md)，包含数据库升级、真实MySQL初始化、滞留向量过滤及后台清理验证。
+命令默认从仓库根目录执行。历史文档用于查阅项目演进。当前启动方式和升级顺序以项目 README 与[数据库迁移说明](../deploy/migrations/README.md)为准。
 
 | 分类 | 内容 |
 | --- | --- |
